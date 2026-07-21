@@ -1,0 +1,23 @@
+AmazingChance/
+
+├── docs/
+│   ├── 01_Product_Vision.md
+│   ├── 02_Master_Plan.md
+│   ├── 03_PRD.md
+│   ├── 04_Brandbook.md
+│   ├── 05_User_Flow.md
+│   ├── 06_Database.md
+│   ├── 07_API.md
+│   ├── 08_Security.md
+│   ├── 09_Transparency.md
+│   ├── 10_Admin.md
+│
+├── design/
+│
+├── frontend/
+│
+├── backend/
+│
+├── api/
+│
+└── assets/
