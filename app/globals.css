@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #05070d;
+  --color-foreground: #ffffff;
+
+  --color-card: #111827;
+  --color-card-foreground: #ffffff;
+
+  --color-muted: #0b1120;
+  --color-muted-foreground: #8b93a7;
+
+  --color-border: rgba(255, 255, 255, 0.08);
+
+  --color-gold: #f8c84a;
+  --color-gold-foreground: #05070d;
+
+  --color-blue: #2e6bff;
+  --color-blue-foreground: #ffffff;
+
+  --color-success: #34d399;
+
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+
+  --radius: 1rem;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  background-color: var(--color-background);
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes ac-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-24px);
+    opacity: 1;
+  }
+}
+
+@keyframes ac-pulse-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
