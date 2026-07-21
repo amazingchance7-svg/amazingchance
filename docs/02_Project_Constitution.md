@@ -1,7 +1,8 @@
-
 # Amazing Chance — Project Constitution
 
-Version: 1.0 (Draft)
+**Document Version:** 1.0  
+**Status:** Draft  
+**Last Updated:** 2026-07-21
 
 ---
 
