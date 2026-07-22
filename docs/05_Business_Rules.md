@@ -69,3 +69,84 @@ The following rules apply to the entire platform:
 13. Administrative permissions cannot override draw integrity rules.
 14. Public draw results must be independently reproducible.
 15. Transfers between user accounts are prohibited.
+---
+
+## 5. Purchase State Machine
+
+A purchase represents one attempt to buy a specific number of tickets for one specific draw.
+
+Each purchase must have exactly one current state.
+
+### 5.1 Purchase States
+
+| State | Description |
+|---|---|
+| `CREATED` | The purchase order has been created but payment processing has not started. |
+| `PAYMENT_PENDING` | The user has been redirected to the payment provider or payment confirmation is pending. |
+| `PAYMENT_CONFIRMED` | The payment provider has confirmed successful payment. |
+| `TICKET_ALLOCATION_PENDING` | Payment is confirmed and ticket creation is waiting to be completed. |
+| `COMPLETED` | All purchased tickets have been created and linked to the purchase. |
+| `PAYMENT_FAILED` | The payment provider rejected or failed the payment. |
+| `EXPIRED` | Payment was not confirmed before the purchase expiration time. |
+| `CANCELLED` | The purchase was cancelled before successful payment confirmation. |
+| `MANUAL_REVIEW` | The purchase requires fraud, payment, compliance, or technical review. |
+| `REFUND_PENDING` | An approved refund or compensating payment operation is being processed. |
+| `REFUNDED` | The approved refund has been completed. |
+
+### 5.2 Permitted Purchase Transitions
+
+| Current State | Event | Resulting State |
+|---|---|---|
+| `CREATED` | Payment session successfully created | `PAYMENT_PENDING` |
+| `CREATED` | User cancels before payment | `CANCELLED` |
+| `CREATED` | Purchase expiration time reached | `EXPIRED` |
+| `PAYMENT_PENDING` | Verified successful payment callback received | `PAYMENT_CONFIRMED` |
+| `PAYMENT_PENDING` | Verified failed payment callback received | `PAYMENT_FAILED` |
+| `PAYMENT_PENDING` | Payment confirmation deadline reached | `EXPIRED` |
+| `PAYMENT_PENDING` | Risk rule requires investigation | `MANUAL_REVIEW` |
+| `PAYMENT_CONFIRMED` | Ticket allocation starts | `TICKET_ALLOCATION_PENDING` |
+| `PAYMENT_CONFIRMED` | Risk or reconciliation issue detected | `MANUAL_REVIEW` |
+| `TICKET_ALLOCATION_PENDING` | All required tickets are created | `COMPLETED` |
+| `TICKET_ALLOCATION_PENDING` | Allocation cannot safely continue | `MANUAL_REVIEW` |
+| `COMPLETED` | Refund is legally and operationally approved | `REFUND_PENDING` |
+| `MANUAL_REVIEW` | Payment confirmed and purchase approved | `PAYMENT_CONFIRMED` |
+| `MANUAL_REVIEW` | Purchase rejected before ticket allocation | `CANCELLED` |
+| `MANUAL_REVIEW` | Refund approved | `REFUND_PENDING` |
+| `REFUND_PENDING` | Refund provider confirms completion | `REFUNDED` |
+
+### 5.3 Purchase Rules
+
+1. A purchase must reference exactly one user and one draw.
+2. A purchase must define the requested ticket quantity before payment begins.
+3. The purchase amount cannot change after the payment session is created.
+4. Tickets may be created only after verified payment confirmation.
+5. A payment callback must be authenticated before it changes purchase state.
+6. Duplicate payment callbacks must not create duplicate state transitions or duplicate tickets.
+7. Each external payment transaction identifier may be linked to only one purchase.
+8. A completed purchase must contain exactly the number of tickets paid for.
+9. A purchase cannot become `COMPLETED` after sales for its draw have been finalized.
+10. A purchase that expires without confirmed payment must not create tickets.
+11. A failed or cancelled purchase must not create tickets.
+12. A purchase under manual review must not create tickets until explicitly approved.
+13. Historical purchase states must not be edited or deleted.
+14. Every transition must record its cause, timestamp, source, and correlation identifier.
+
+### 5.4 Late Payment Rule
+
+If payment confirmation is received after ticket sales for the selected draw have closed:
+
+- tickets must not be added to the closed draw;
+- the purchase must not be silently reassigned to another draw;
+- the payment must be placed into reconciliation or manual review;
+- the user must receive a clear status notification;
+- the final resolution must be either an approved refund or another legally permitted remedy accepted by the user.
+
+### 5.5 Duplicate Callback Rule
+
+If the payment provider sends the same successful callback more than once:
+
+- the first valid callback may change the state;
+- later callbacks with the same provider transaction identifier must be treated as duplicates;
+- no additional tickets may be created;
+- the duplicate event must be recorded in the audit log;
+- the provider must still receive the appropriate technical response to stop unnecessary retries.
