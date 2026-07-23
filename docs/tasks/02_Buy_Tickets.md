@@ -2,15 +2,15 @@
 
 ## Status
 
-Draft
+Ready
 
 ---
 
 # Business Goal
 
-Allow users to purchase lottery tickets in the simplest, fastest and most trustworthy way possible.
+Enable users to purchase lottery tickets in the fastest, simplest and most trustworthy way.
 
-The purchase flow should maximize conversion while maintaining complete transparency.
+This feature is a core part of the MVP and must be production-ready.
 
 ---
 
@@ -19,33 +19,31 @@ The purchase flow should maximize conversion while maintaining complete transpar
 The user wants to:
 
 - Choose how many tickets to buy.
-- See the total price immediately.
-- Understand how much goes to the jackpot.
-- Complete the purchase in as few steps as possible.
-- Receive purchased tickets instantly.
+- Instantly see the total price.
+- Understand what they are purchasing.
+- Continue to secure checkout.
 
 ---
 
 # Current State
 
-Landing Page already contains:
+Existing functionality:
 
+- Landing Page
+- Live Weekly Jackpot
+- Countdown Timer
 - Get Your Tickets button
-- Verify Every Ticket
-- Live Jackpot
-- Countdown
+- Verify Ticket modal
 
-Clicking "Get Your Tickets" should start this flow.
+Clicking **Get Your Tickets** starts this flow.
 
 ---
 
 # Functional Requirements
 
-The Buy Tickets page must allow users to:
+## Ticket Quantity
 
-## Select ticket quantity
-
-Available options:
+The user can select:
 
 - 1
 - 5
@@ -54,65 +52,43 @@ Available options:
 - 50
 - 100
 
-The user may also enter a custom quantity.
+A custom quantity field must also be available.
 
 ---
 
-## Live price calculation
+## Live Calculation
 
-Price per ticket:
-
-$1
+Update instantly without page reload.
 
 Display:
 
-Tickets
-
-Price per Ticket
-
-Total
-
-Contribution to Weekly Jackpot
-
-Contribution to Annual Jackpot
+- Number of Tickets
+- Price per Ticket ($1)
+- Total Price
+- Weekly Jackpot Contribution
+- Annual Jackpot Contribution
 
 ---
 
-## Live update
-
-Changing ticket quantity updates:
-
-- Total price
-- Weekly Jackpot contribution
-- Annual Jackpot contribution
-
-without reloading the page.
-
----
-
-## Purchase summary
+## Purchase Summary
 
 Display:
 
-Weekly Draw ID
-
-Next Draw Countdown
-
-Selected Quantity
-
-Price
-
-Expected Ticket Range (after successful payment)
+- Weekly Draw ID
+- Draw Date
+- Countdown
+- Selected Quantity
+- Total Price
 
 ---
 
-## Continue button
+## Primary Action
 
-Primary CTA:
+Button:
 
 Continue to Checkout
 
-The button remains disabled until:
+Disabled until:
 
 Ticket Quantity > 0
 
@@ -120,112 +96,110 @@ Ticket Quantity > 0
 
 # Non-Functional Requirements
 
-Responsive
-
-Accessible
-
-Keyboard friendly
-
-Fast
-
-Reusable React components
-
-TypeScript
-
-No duplicated logic
+- Responsive
+- Accessible
+- Mobile friendly
+- Keyboard navigation
+- Fast rendering
+- Reusable React components
+- TypeScript
+- Tailwind CSS
+- Production-ready quality
 
 ---
 
-# Edge Cases
+# Future Integrations
 
-User enters zero.
+- Supabase
+- Stripe
+- Ticket Generator
+- User Dashboard
+- Transparency Center
 
-User enters negative number.
+Do not implement integrations yet.
 
-User enters non-numeric value.
-
-User enters extremely large value.
-
-Connection lost.
-
-Server unavailable.
-
----
-
-# Future Integration
-
-Supabase
-
-Stripe
-
-Ticket Generator
-
-Dashboard
-
-Payment History
-
-Transparency Center
+Only prepare the architecture.
 
 ---
 
 # Do Not Change
 
-Do not redesign Landing.
+Do not redesign Landing Page.
 
-Do not redesign Hero.
+Do not modify Hero.
 
 Do not change colors.
 
-Do not modify existing components.
+Do not change typography.
 
-Reuse design system.
+Do not modify existing animations.
+
+Do not rename routes.
+
+Reuse existing design system.
 
 ---
 
-# AI Implementation Prompt
+# Execution Prompt
 
-(To be added before sending to AI.)
+Read and follow:
+
+- docs/tasks/00_Master_Context.md
+
+Implement the Buy Tickets feature exactly as specified in this document.
+
+Requirements:
+
+- Reuse the existing design system.
+- Preserve all approved UI.
+- Build production-quality React components.
+- Use Next.js, TypeScript and Tailwind CSS.
+- No placeholder architecture.
+- Prepare the feature for future Supabase and Stripe integration.
+- Do not implement payment yet.
+- Do not modify unrelated pages or components.
+- Desktop and mobile must both work correctly.
 
 ---
 
 # Acceptance Criteria
 
-User can select ticket quantity.
-
-Price updates instantly.
-
-Summary updates instantly.
-
-Continue button works correctly.
-
-Desktop works.
-
-Mobile works.
-
-Accessibility passes.
+- Ticket quantity can be selected.
+- Custom quantity works.
+- Live calculation updates instantly.
+- Continue button behaves correctly.
+- Design matches the Landing Page.
+- Responsive on desktop and mobile.
+- No existing functionality is broken.
 
 ---
 
 # Manual Review Checklist
 
-□ Premium appearance
+- [ ] Premium appearance
+- [ ] Easy to understand
+- [ ] Mobile verified
+- [ ] Desktop verified
+- [ ] Live calculation works
+- [ ] Continue button works
+- [ ] Existing design preserved
+- [ ] Ready for Checkout integration
 
-□ Easy to understand
+---
 
-□ Mobile friendly
+# Dependencies
 
-□ Desktop friendly
+Previous:
 
-□ Fast interaction
+- 00_Master_Context
+- Landing Page
 
-□ No visual glitches
+Next:
 
-□ Design unchanged
-
-□ Ready for Checkout integration
+- 03_Checkout
 
 ---
 
 # Status
 
-Draft
+Ready
