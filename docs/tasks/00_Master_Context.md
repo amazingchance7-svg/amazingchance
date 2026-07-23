@@ -213,4 +213,12 @@ Do not redesign previous work.
 Finish one task before starting another.
 
 Wait for the next prompt.
+# MVP First Principle
 
+The primary goal is to build a complete, working MVP.
+
+No new features should be added before the MVP is finished unless they are required to complete the core user journey.
+
+Ideas for future improvements must be recorded separately and implemented only after the MVP is complete.
+
+Finished is better than perfect.
