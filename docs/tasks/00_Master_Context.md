@@ -252,6 +252,13 @@ Administrative access is limited to monitoring, support, security actions and st
 Every permitted administrative action must be recorded in an immutable audit log.
 
 ---
+Identity Integrity
+
+Every ticket, transaction, prize, balance record and audit event must be linked to the immutable internal User ID.
+
+Email address, name and profile information are never used as primary identifiers inside the system.
+
+---
 
 # AI Workflow
 
