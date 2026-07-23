@@ -107,6 +107,35 @@ Ticket Quantity > 0
 - Production-ready quality
 
 ---
+# Technical Constraints
+
+- Use Next.js App Router.
+- Use TypeScript only.
+- Use Tailwind CSS only.
+- Use reusable React components.
+- No inline styles.
+- No mock backend.
+- No hardcoded API endpoints.
+- Prepare the code for future Supabase and Stripe integration.
+ ---
+ # Out of Scope
+
+Do NOT implement:
+
+- Authentication
+- Payment processing
+- Stripe integration
+- Supabase integration
+- Ticket generation
+- Email notifications
+- User Dashboard
+- Admin Panel
+- Draw logic
+- Transparency Center
+
+Only implement the Buy Tickets page and navigation to Checkout.
+
+---
 
 # Future Integrations
 
@@ -142,35 +171,39 @@ Reuse existing design system.
 
 # Execution Prompt
 
-Read and follow:
+Read the following document first:
 
 - docs/tasks/00_Master_Context.md
 
-Implement the Buy Tickets feature exactly as specified in this document.
+Then read this task completely.
+
+Implement ONLY the Buy Tickets feature described in this document.
 
 Requirements:
 
-- Reuse the existing design system.
-- Preserve all approved UI.
-- Build production-quality React components.
-- Use Next.js, TypeScript and Tailwind CSS.
-- No placeholder architecture.
-- Prepare the feature for future Supabase and Stripe integration.
-- Do not implement payment yet.
+- Reuse existing components whenever possible.
+- Preserve the approved Landing Page design.
+- Use Next.js App Router, TypeScript and Tailwind CSS.
+- Create clean, reusable and maintainable components.
+- Prepare the architecture for future Supabase and Stripe integration.
+- Do not implement authentication, payment processing or backend logic.
 - Do not modify unrelated pages or components.
-- Desktop and mobile must both work correctly.
+- Ensure the page works correctly on desktop and mobile devices.
 
 ---
 
 # Acceptance Criteria
 
-- Ticket quantity can be selected.
-- Custom quantity works.
-- Live calculation updates instantly.
-- Continue button behaves correctly.
-- Design matches the Landing Page.
-- Responsive on desktop and mobile.
-- No existing functionality is broken.
+- User can select predefined ticket quantities.
+- User can enter a custom ticket quantity.
+- Total price updates instantly.
+- Weekly and Annual Jackpot contributions are displayed.
+- Continue to Checkout button is disabled when quantity equals zero.
+- Continue to Checkout button navigates to the Checkout page.
+- Layout is fully responsive.
+- No console errors.
+- No TypeScript errors.
+- Existing Landing Page functionality remains unchanged.
 
 ---
 
@@ -202,4 +235,4 @@ Next:
 
 # Status
 
-Ready
+
