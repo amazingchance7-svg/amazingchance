@@ -200,6 +200,59 @@ No unnecessary dependencies.
 
 ---
 
+# Immutable Records Principle
+
+Amazing Chance is built on the principle that no administrator, employee, developer, system operator or other person may manually alter critical lottery or financial records.
+
+No person may manually create, edit, replace or delete:
+
+- Purchased tickets
+- Ticket ownership
+- Draw entries
+- Draw results
+- Winner records
+- Prize amounts
+- User balances
+- Financial transactions
+- Jackpot balances
+- Published financial reports
+- Audit logs
+
+Critical records may only be created through predefined and verified system events.
+
+Examples:
+
+- A ticket may only be created after a payment has been successfully verified.
+- A draw result may only be created by the approved draw mechanism.
+- A prize may only be calculated automatically from an immutable draw result and eligible ticket.
+- A prize balance may only be credited through a verified prize-calculation event.
+- A withdrawal may only be recorded after a valid user request and confirmed payment-provider result.
+- Reports must be generated automatically from actual immutable records.
+
+Critical records must be append-only.
+
+Once a critical record has been confirmed, it cannot be edited or deleted.
+
+If an error, cancellation or reversal occurs, the system must create a new linked event that records what happened. The original record must remain unchanged and visible in the audit history.
+
+Administrator interfaces must not provide controls for manually changing:
+
+- Tickets
+- Winners
+- Draw results
+- Prize amounts
+- User balances
+- Financial transactions
+- Jackpot amounts
+- Audit history
+- Published reports
+
+Administrative access is limited to monitoring, support, security actions and starting explicitly permitted system procedures.
+
+Every permitted administrative action must be recorded in an immutable audit log.
+
+---
+
 # AI Workflow
 
 Read this document before every task.
