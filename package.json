@@ -1,0 +1,14 @@
+{
+  "name": "amazing-chance",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @amazing-chance/web --filter @amazing-chance/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @amazing-chance/api prisma:generate",
+    "db:migrate": "pnpm --filter @amazing-chance/api prisma:migrate",
+    "db:studio": "pnpm --filter @amazing-chance/api prisma:studio"
+  }
+}
