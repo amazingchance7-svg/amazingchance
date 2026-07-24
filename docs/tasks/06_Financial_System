@@ -1,0 +1,1179 @@
+# 06. Financial System
+
+Status: Approved for MVP
+
+---
+
+# Purpose
+
+This document defines the complete financial architecture of Amazing Chance.
+
+It describes how payments are processed, how funds are allocated, how immutable financial records are stored, and how financial integrity is guaranteed.
+
+This document is the single source of truth for all money-related operations.
+
+---
+
+# Business Goal
+
+Provide a transparent, secure and immutable financial system where every payment is traceable, every allocation is auditable, and no administrator can manipulate financial data.
+
+---
+
+# User Goal
+
+Users should be able to:
+
+- purchase tickets;
+- receive prizes;
+- view payment history;
+- verify prize payments;
+- trust that money cannot be altered.
+
+---
+
+# Scope
+
+Included:
+
+- Purchase Orders
+- Payments
+- Ticket Creation
+- Financial Ledger
+- Weekly Jackpot Allocation
+- Annual Jackpot Allocation
+- Company Revenue Allocation
+- Prize Payments
+- Refunds
+- Financial Audit
+
+Not Included:
+
+- Draw Logic
+- Random.org Integration
+- Winner Selection
+- User Authentication
+
+Those modules are described in separate documents.
+
+---
+
+# Core Principles
+
+## Immutable Records Principle
+
+Financial records can never be edited.
+
+Corrections are performed only by creating new records.
+
+---
+
+## Ledger is the Single Source of Truth
+
+Balances are never manually stored.
+
+All financial values are calculated from immutable ledger records.
+
+---
+
+## Automatic Allocation
+
+Every confirmed payment is automatically divided into:
+
+70% → Weekly Jackpot
+
+20% → Company Revenue
+
+10% → Annual Jackpot
+
+No manual allocation is allowed.
+
+---
+
+## No Internal Wallet
+
+Amazing Chance does not use a deposit wallet.
+
+Users never preload funds.
+
+Every purchase is linked to a specific Purchase Order.
+
+---
+
+## No Administrative Financial Control
+
+Administrators cannot:
+
+- change balances;
+- change jackpot amounts;
+- edit payments;
+- modify ledger records;
+- create fake transactions;
+- edit prize amounts.
+
+Financial integrity is fully system-controlled.
+
+---
+
+# Architecture Overview
+
+Customer
+
+↓
+
+Purchase Order
+
+↓
+
+Payment Provider
+
+↓
+
+Payment Confirmation
+
+↓
+
+Financial Allocation
+
+├── Weekly Jackpot (70%)
+
+├── Annual Jackpot (10%)
+
+└── Company Revenue (20%)
+
+↓
+
+Ticket Creation
+
+↓
+
+Financial Ledger
+
+↓
+
+Audit Log
+
+---
+
+# Financial Flow
+
+The financial lifecycle begins when a user purchases one or more lottery tickets.
+
+Each purchase is processed independently and is linked to a unique Purchase Order.
+
+Funds never enter an internal wallet.
+
+The platform never stores prepaid balances.
+
+Every payment has a clearly defined business purpose.
+
+---
+
+## Financial Flow Overview
+
+Customer
+
+↓
+
+Purchase Order Created
+
+↓
+
+Payment Provider
+
+↓
+
+Payment Authorized
+
+↓
+
+Payment Confirmed
+
+↓
+
+Financial Allocation
+
+├── Weekly Jackpot (70%)
+
+├── Company Revenue (20%)
+
+└── Annual Jackpot (10%)
+
+↓
+
+Ticket Generation
+
+↓
+
+Ledger Entries Created
+
+↓
+
+Eligible for Weekly Draw
+
+↓
+
+Eligible for Annual Draw
+
+---
+
+## Purchase Order
+
+A Purchase Order represents a user's intent to purchase one or more lottery tickets.
+
+The Purchase Order exists before payment is initiated.
+
+Each Purchase Order contains:
+
+- unique order identifier;
+- purchaser identifier;
+- selected lottery draw;
+- ticket quantity;
+- ticket price;
+- total amount;
+- currency;
+- creation timestamp;
+- current status.
+
+Possible statuses:
+
+- Created
+- Payment Pending
+- Paid
+- Failed
+- Expired
+- Refunded
+- Cancelled
+
+Orders cannot be modified after successful payment.
+
+---
+
+## Payment Processing
+
+Payments are processed only through supported external payment providers.
+
+The platform never processes or stores payment card information.
+
+Each payment is linked to exactly one Purchase Order.
+
+Possible payment states:
+
+- Pending
+- Authorized
+- Confirmed
+- Failed
+- Cancelled
+- Refunded
+
+Only the **Confirmed** status allows ticket generation.
+
+---
+
+## Payment Confirmation
+
+A payment is considered successful only after receiving official confirmation from the payment provider.
+
+Client-side success messages are never treated as proof of payment.
+
+All financial operations begin only after server-side confirmation.
+
+Duplicate confirmations must not create duplicate tickets or duplicate financial records.
+
+The payment confirmation process must be fully idempotent.
+
+---
+
+## Ticket Generation
+
+Tickets are generated only after payment confirmation.
+
+The system creates the exact number of tickets specified in the Purchase Order.
+
+Every ticket receives:
+
+- unique ticket identifier;
+- draw identifier;
+- owner identifier;
+- purchase timestamp;
+- annual draw eligibility;
+- weekly draw eligibility.
+
+Ticket generation is atomic.
+
+Either all tickets are successfully created or none are created.
+
+---
+
+# Revenue Allocation
+
+Immediately after successful ticket generation, the payment amount is automatically distributed.
+
+The allocation is performed entirely by the system.
+
+No administrator can modify allocation percentages.
+
+For every confirmed payment:
+
+- 70% is allocated to the Weekly Jackpot;
+- 20% is allocated as Company Revenue;
+- 10% is allocated to the Annual Jackpot.
+
+Each allocation creates independent immutable ledger records.
+
+---
+
+## Weekly Jackpot Allocation
+
+Every confirmed payment contributes exactly seventy percent of its value to the Weekly Jackpot associated with the selected draw.
+
+The allocation becomes permanent immediately after payment confirmation.
+
+Weekly Jackpot values are calculated from ledger records.
+
+The jackpot amount is never manually entered.
+
+---
+
+## Annual Jackpot Allocation
+
+Every confirmed payment contributes ten percent of its value to the current Annual Jackpot.
+
+Every confirmed ticket automatically becomes eligible for the Annual Draw.
+
+No additional purchase is required.
+
+The Annual Jackpot is calculated exclusively from ledger records.
+
+---
+
+## Company Revenue Allocation
+
+Twenty percent of every confirmed payment is allocated to Company Revenue.
+
+Revenue allocation is immutable.
+
+Revenue records are included in financial reporting and audit logs.
+
+---
+
+# Financial Ledger
+
+The Financial Ledger is the single source of truth for all financial operations performed within Amazing Chance.
+
+Every financial event creates one or more immutable ledger entries.
+
+Ledger records can never be modified or deleted.
+
+If a correction is required, the system creates additional compensating records.
+
+The original record always remains unchanged.
+
+The ledger contains:
+
+- payments;
+- jackpot allocations;
+- company revenue allocations;
+- prize payments;
+- refunds;
+- system financial events.
+
+All balances, reports and financial statistics are calculated from ledger records.
+
+---
+
+# Functional Requirements
+
+## FR-001 Purchase Order Creation
+
+The system shall create a unique Purchase Order before initiating payment.
+
+Each Purchase Order shall include:
+
+- unique identifier;
+- user identifier;
+- draw identifier;
+- ticket quantity;
+- ticket price;
+- total payment amount;
+- currency;
+- creation timestamp;
+- order status.
+
+---
+
+## FR-002 External Payment Processing
+
+The system shall process payments only through approved external payment providers.
+
+The platform shall never process or store payment card data.
+
+---
+
+## FR-003 Payment Verification
+
+The system shall verify every payment using server-to-server confirmation received from the payment provider.
+
+Client-side confirmations shall never be considered valid proof of payment.
+
+---
+
+## FR-004 Ticket Generation
+
+The system shall generate lottery tickets only after successful payment confirmation.
+
+No ticket may exist without a confirmed payment.
+
+---
+
+## FR-005 Automatic Revenue Allocation
+
+After payment confirmation, the system shall automatically allocate payment funds:
+
+- 70% → Weekly Jackpot;
+- 20% → Company Revenue;
+- 10% → Annual Jackpot.
+
+The allocation shall occur automatically without administrator intervention.
+
+---
+
+## FR-006 Immutable Ledger
+
+Every financial operation shall create immutable ledger entries.
+
+Ledger records shall never be modified or deleted.
+
+---
+
+## FR-007 Annual Draw Eligibility
+
+Every confirmed ticket shall automatically participate in the Annual Draw.
+
+No additional purchase or registration shall be required.
+
+---
+
+## FR-008 Weekly Draw Eligibility
+
+Every confirmed ticket shall participate only in the Weekly Draw for which it was purchased.
+
+---
+
+## FR-009 Financial Audit
+
+Every financial operation shall be fully traceable.
+
+Audit records shall include:
+
+- timestamp;
+- event type;
+- entity identifier;
+- initiating component;
+- operation result.
+
+---
+
+## FR-010 Prize Payments
+
+Prize payments shall create new immutable ledger entries.
+
+Prize payments shall never modify previous financial records.
+
+---
+
+## FR-011 Refund Processing
+
+Refunds shall create compensating ledger entries.
+
+Original payment records shall remain unchanged.
+
+---
+
+## FR-012 Idempotency
+
+Repeated payment confirmations shall never create:
+
+- duplicate tickets;
+- duplicate ledger entries;
+- duplicate allocations;
+- duplicate prizes.
+
+---
+
+## FR-013 Financial Reporting
+
+All financial reports shall be generated exclusively from ledger records.
+
+No report shall rely on manually maintained balances.
+
+---
+
+## FR-014 Historical Integrity
+
+The system shall preserve the complete financial history for every Purchase Order.
+
+Historical records shall remain accessible for audit purposes.
+
+---
+
+## FR-015 Financial Consistency
+
+All financial operations shall be executed atomically.
+
+If any step fails, the entire transaction shall be rolled back.
+
+---
+
+# Business Rules
+
+## BR-001
+
+A Purchase Order must exist before payment.
+
+---
+
+## BR-002
+
+A ticket cannot exist without a confirmed payment.
+
+---
+
+## BR-003
+
+Each Purchase Order belongs to exactly one user.
+
+---
+
+## BR-004
+
+Each confirmed payment creates exactly one financial allocation.
+
+---
+
+## BR-005
+
+Financial allocation percentages are fixed:
+
+- Weekly Jackpot — 70%
+- Company Revenue — 20%
+- Annual Jackpot — 10%
+
+These percentages cannot be modified through the administration panel.
+
+---
+
+## BR-006
+
+Every confirmed ticket automatically participates in the Weekly Draw.
+
+---
+
+## BR-007
+
+Every confirmed ticket automatically participates in the Annual Draw.
+
+---
+
+## BR-008
+
+Annual Draw participation remains valid even if the ticket does not win the Weekly Draw.
+
+---
+
+## BR-009
+
+The Financial Ledger is the only source of financial truth.
+
+---
+
+## BR-010
+
+Financial records are immutable.
+
+---
+
+## BR-011
+
+Financial corrections are performed only by creating new ledger records.
+
+---
+
+## BR-012
+
+Deleting financial records is prohibited.
+
+---
+
+## BR-013
+
+Editing financial records is prohibited.
+
+---
+
+## BR-014
+
+Prize payments never modify jackpot allocation records.
+
+---
+
+## BR-015
+
+Refunds never delete payment records.
+
+---
+
+## BR-016
+
+Each financial event shall be uniquely identifiable.
+
+---
+
+## BR-017
+
+Every ledger record shall contain a creation timestamp.
+
+---
+
+## BR-018
+
+Every ledger record shall reference the related business entity whenever applicable.
+
+---
+
+## BR-019
+
+Administrators shall have read-only access to historical financial records.
+
+---
+
+## BR-020
+
+The platform shall guarantee complete financial traceability for every ticket from purchase through prize payment or refund.
+
+---
+
+# Security Requirements
+
+## SEC-001 Immutable Financial Records
+
+Financial ledger records shall be immutable.
+
+Modification and deletion of existing ledger records are prohibited.
+
+---
+
+## SEC-002 Payment Verification
+
+Only server-to-server payment confirmations received from approved payment providers shall be accepted.
+
+Client-side confirmations shall never initiate financial operations.
+
+---
+
+## SEC-003 Financial Authorization
+
+Every financial operation shall be executed only by authorized system components.
+
+Direct user access to financial processing is prohibited.
+
+---
+
+## SEC-004 Administrator Restrictions
+
+Administrators shall not be able to:
+
+- modify ledger records;
+- modify payment records;
+- modify jackpot allocations;
+- modify company revenue allocations;
+- modify prize allocations;
+- modify ticket ownership;
+- modify draw eligibility.
+
+---
+
+## SEC-005 Complete Audit Trail
+
+Every financial event shall generate an audit record.
+
+Audit records shall include:
+
+- timestamp;
+- event type;
+- entity identifier;
+- initiating component;
+- execution result.
+
+Audit records shall be immutable.
+
+---
+
+## SEC-006 Allocation Integrity
+
+Revenue allocation percentages shall be fixed within the system configuration.
+
+Financial allocations shall not be editable through the administration interface.
+
+---
+
+## SEC-007 Atomic Financial Operations
+
+Financial operations shall execute as atomic transactions.
+
+Partial execution is prohibited.
+
+---
+
+## SEC-008 Duplicate Protection
+
+Repeated payment confirmations shall never create duplicate:
+
+- tickets;
+- allocations;
+- ledger entries;
+- prize payments.
+
+---
+
+## SEC-009 Financial Consistency
+
+The system shall guarantee financial consistency under concurrent requests.
+
+---
+
+## SEC-010 Data Integrity
+
+Every ledger record shall reference the originating business entity whenever applicable.
+
+Broken financial references shall not be permitted.
+
+---
+
+# Validation Rules
+
+## VAL-001
+
+A Purchase Order must exist before payment.
+
+---
+
+## VAL-002
+
+A payment cannot be confirmed more than once.
+
+---
+
+## VAL-003
+
+Tickets may only be generated after successful payment confirmation.
+
+---
+
+## VAL-004
+
+Every confirmed payment shall generate exactly one allocation event.
+
+---
+
+## VAL-005
+
+The allocation percentages must always equal:
+
+- Weekly Jackpot — 70%;
+- Company Revenue — 20%;
+- Annual Jackpot — 10%.
+
+Total allocation must equal 100%.
+
+---
+
+## VAL-006
+
+Every generated ticket must reference an existing Purchase Order.
+
+---
+
+## VAL-007
+
+Every generated ticket must reference an existing Draw.
+
+---
+
+## VAL-008
+
+Every confirmed ticket must automatically receive Annual Draw eligibility.
+
+---
+
+## VAL-009
+
+Each ledger record shall contain a valid timestamp.
+
+---
+
+## VAL-010
+
+Each ledger record shall contain a valid financial amount.
+
+Negative allocation values are prohibited unless generated by an approved compensating transaction.
+
+---
+
+# Error States
+
+## ERR-001 Payment Failed
+
+Payment provider rejected the transaction.
+
+No tickets are generated.
+
+---
+
+## ERR-002 Payment Timeout
+
+Payment confirmation was not received within the allowed time.
+
+Order status becomes Expired.
+
+---
+
+## ERR-003 Duplicate Confirmation
+
+A repeated payment confirmation was received.
+
+The system ignores the duplicate request.
+
+---
+
+## ERR-004 Allocation Failure
+
+Revenue allocation could not be completed.
+
+The financial transaction is rolled back.
+
+---
+
+## ERR-005 Ticket Generation Failure
+
+Ticket creation failed.
+
+The entire financial transaction is rolled back.
+
+---
+
+## ERR-006 Ledger Write Failure
+
+The system failed to write immutable ledger records.
+
+The transaction is cancelled.
+
+---
+
+## ERR-007 Invalid Allocation
+
+Calculated allocation percentages do not equal 100%.
+
+The transaction is rejected.
+
+---
+
+## ERR-008 Invalid Draw Reference
+
+The Purchase Order references a non-existent or unavailable Draw.
+
+Ticket generation is rejected.
+
+---
+
+## ERR-009 Financial Consistency Error
+
+Ledger validation detects inconsistent financial data.
+
+The transaction is suspended for investigation.
+
+---
+
+## ERR-010 Audit Failure
+
+Audit information could not be recorded.
+
+The financial transaction shall not be completed until audit logging succeeds.
+
+---
+
+# Data Model
+
+## Purchase Order
+
+Fields:
+
+- order_id
+- user_id
+- draw_id
+- ticket_quantity
+- ticket_price
+- total_amount
+- currency
+- payment_provider
+- payment_reference
+- status
+- created_at
+- updated_at
+
+---
+
+## Payment
+
+Fields:
+
+- payment_id
+- order_id
+- provider
+- provider_transaction_id
+- amount
+- currency
+- status
+- confirmed_at
+- created_at
+
+---
+
+## Financial Ledger Entry
+
+Fields:
+
+- ledger_entry_id
+- transaction_type
+- related_entity_type
+- related_entity_id
+- amount
+- currency
+- created_at
+
+Ledger entries are immutable.
+
+---
+
+## Allocation Entry
+
+Fields:
+
+- allocation_id
+- payment_id
+- allocation_type
+- percentage
+- amount
+- created_at
+
+Allocation Types:
+
+- Weekly Jackpot
+- Company Revenue
+- Annual Jackpot
+
+---
+
+## Prize Payment
+
+Fields:
+
+- prize_payment_id
+- draw_id
+- winner_user_id
+- ticket_id
+- prize_amount
+- currency
+- payment_status
+- created_at
+
+---
+
+## Refund
+
+Fields:
+
+- refund_id
+- payment_id
+- refund_reason
+- refund_amount
+- refund_status
+- created_at
+
+---
+
+# UI Requirements
+
+The Financial System is primarily a backend module.
+
+Users may access the following financial information:
+
+- Purchase History
+- Payment Status
+- Prize Payment History
+- Refund History
+
+The administration interface shall provide read-only financial reporting.
+
+No interface shall allow modification of immutable financial records.
+
+---
+
+# Integration Points
+
+The Financial System integrates with:
+
+- User Management
+- Purchase Order Module
+- Payment Provider Module
+- Ticket Module
+- Draw Module
+- Prize Module
+- Audit Module
+- Reporting Module
+
+The Financial System does not determine draw results or winning tickets.
+
+---
+
+# Performance Requirements
+
+- Payment confirmation shall be processed immediately after provider notification.
+- Ticket generation shall complete within acceptable system response times.
+- Financial allocation shall execute within the same transaction as ticket generation.
+- Ledger writes shall be durable before transaction completion.
+- Financial reports shall be generated from immutable ledger data.
+
+---
+
+# Dependencies
+
+This module depends on:
+
+- User Management
+- Purchase Orders
+- External Payment Providers
+- Ticket Generation
+- Audit Logging
+
+This module is required before implementing:
+
+- Draw Engine
+- Prize Distribution
+- Financial Reporting
+
+---
+
+# Out of Scope
+
+The following features are excluded from MVP:
+
+- Internal Wallet
+- User Deposits
+- Stored Balance
+- Peer-to-Peer Transfers
+- Manual Financial Adjustments
+- Cryptocurrency Payments
+- Multi-Currency Balances
+- Promotional Credit System
+- Cashback Programs
+- Loyalty Points
+
+---
+
+# Future Enhancements
+
+Possible future improvements include:
+
+- Additional payment providers
+- Multi-currency support
+- Automatic tax reporting
+- Financial analytics dashboard
+- Exportable accounting reports
+- Automated reconciliation
+- ERP integration
+
+These features are not required for MVP.
+
+---
+
+# Acceptance Criteria
+
+The Financial System shall be considered complete when:
+
+- Purchase Orders are created before payment.
+- Payments are confirmed only by external payment providers.
+- Tickets are generated only after successful payment confirmation.
+- Every confirmed payment is automatically allocated:
+  - 70% Weekly Jackpot
+  - 20% Company Revenue
+  - 10% Annual Jackpot
+- Every confirmed ticket is automatically eligible for:
+  - Weekly Draw
+  - Annual Draw
+- Every financial operation creates immutable ledger records.
+- Administrators cannot modify financial data.
+- Financial reports are generated exclusively from ledger records.
+- Complete audit history is preserved.
+- All financial operations are atomic and traceable.
+
+---
+
+# Architecture Decisions
+
+## ADR-001
+
+The platform shall not implement an internal wallet.
+
+---
+
+## ADR-002
+
+Every purchase shall be linked to a unique Purchase Order.
+
+---
+
+## ADR-003
+
+External payment providers are the only source of payment confirmation.
+
+---
+
+## ADR-004
+
+The Financial Ledger is the single source of financial truth.
+
+---
+
+## ADR-005
+
+Financial records are immutable.
+
+---
+
+## ADR-006
+
+Revenue allocation is automatic and system-controlled.
+
+---
+
+## ADR-007
+
+Every confirmed ticket automatically participates in both:
+
+- Weekly Draw
+- Annual Draw
+
+---
+
+## ADR-008
+
+Administrators have no ability to modify financial records, allocations, jackpot amounts or prize values.
+
+---
+
+## ADR-009
+
+The Financial System is responsible only for financial integrity.
+
+Winner selection and randomness are handled exclusively by the Draw Engine.
