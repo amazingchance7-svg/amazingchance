@@ -377,6 +377,8 @@ The ledger contains:
 - prize payments;
 - refunds;
 - system financial events.
+- ledger_entry_id
+- created_by
 
 All balances, reports and financial statistics are calculated from ledger records.
 
@@ -965,6 +967,8 @@ Fields:
 - percentage
 - amount
 - created_at
+- order_id
+- ticket_count
 
 Allocation Types:
 
@@ -1174,6 +1178,6 @@ Administrators have no ability to modify financial records, allocations, jackpot
 
 ## ADR-009
 
-The Financial System is responsible only for financial integrity.
+The Financial System is responsible for payment processing, financial allocation, immutable financial records and financial integrity. Winner selection and randomness are handled exclusively by the Draw Engine.
 
 Winner selection and randomness are handled exclusively by the Draw Engine.
