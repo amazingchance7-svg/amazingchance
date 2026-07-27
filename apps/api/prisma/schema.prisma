@@ -13,15 +13,25 @@ enum UserStatus {
   CLOSED
 }
 
+enum DrawType {
+  WEEKLY
+  ANNUAL
+}
+
 enum DrawStatus {
-  DRAFT
   SCHEDULED
-  OPEN
+  SALES_OPEN
   SALES_CLOSED
-  DRAWING
+  SNAPSHOT_BUILDING
+  SNAPSHOT_FINALIZED
+  RANDOMNESS_PENDING
+  RANDOMNESS_VERIFIED
+  WINNER_SELECTION_PENDING
   COMPLETED
+  PUBLISHED
+  MANUAL_REVIEW
+  FAILED
   CANCELLED
-  ARCHIVED
 }
 
 enum PurchaseStatus {
@@ -39,17 +49,96 @@ enum PurchaseStatus {
 }
 
 enum PaymentStatus {
+  CREATED
   PENDING
-  CONFIRMED
+  SUCCEEDED
   FAILED
   CANCELLED
+  MANUAL_REVIEW
+  REFUND_PENDING
+  PARTIALLY_REFUNDED
   REFUNDED
 }
 
-enum AllocationType {
+enum PaymentAttemptStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  VERIFIED
+  PROCESSED
+  DUPLICATE
+  REJECTED
+  FAILED
+}
+
+enum TicketStatus {
+  ACTIVE
+  VOIDED_BY_REFUND
+}
+
+enum SnapshotStatus {
+  BUILDING
+  FINALIZED
+}
+
+enum RandomnessStatus {
+  CREATED
+  REQUESTED
+  RECEIVED
+  VERIFIED
+  REJECTED
+  FAILED
+}
+
+enum PrizeStatus {
+  CREATED
+  CLAIM_PENDING
+  APPROVED
+  PAYOUT_PENDING
+  PAID
+  WITHHELD
+  CANCELLED
+}
+
+enum PayoutStatus {
+  CREATED
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  MANUAL_REVIEW
+}
+
+enum LedgerTransactionType {
+  PAYMENT_CONFIRMED
+  PAYMENT_ALLOCATION
+  PRIZE_RECOGNIZED
+  PAYOUT_COMPLETED
+  REFUND_COMPLETED
+  ADJUSTMENT
+}
+
+enum LedgerAccountCode {
+  PAYMENT_CLEARING
+  CASH
   WEEKLY_JACKPOT
-  COMPANY_REVENUE
   ANNUAL_JACKPOT
+  COMPANY_REVENUE
+  PRIZE_PAYABLE
+  PAYOUT_CLEARING
+  REFUND_PAYABLE
+}
+
+enum LedgerSide {
+  DEBIT
+  CREDIT
 }
 
 enum AuditActorType {
@@ -57,6 +146,7 @@ enum AuditActorType {
   ADMIN
   SYSTEM
   PAYMENT_PROVIDER
+  RANDOMNESS_PROVIDER
 }
 
 model User {
@@ -64,147 +154,387 @@ model User {
   email           String     @unique
   passwordHash    String
   status          UserStatus @default(PENDING_VERIFICATION)
-  emailVerifiedAt DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  emailVerifiedAt DateTime?  @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @db.Timestamptz(3)
 
-  purchases       Purchase[]
-  tickets         Ticket[]
-  auditLogs       AuditLog[]
+  purchases Purchase[]
+  tickets   Ticket[]
+  prizes    Prize[]
+  payouts   Payout[]
 
+  @@index([status])
   @@map("users")
 }
 
-model Draw {
-  id              String     @id @default(uuid()) @db.Uuid
-  code            String     @unique
-  title           String
-  status          DrawStatus @default(DRAFT)
-  ticketPrice     Decimal    @db.Decimal(12, 2)
-  currency        String     @default("USD") @db.VarChar(3)
-  salesOpenAt     DateTime?
-  salesCloseAt    DateTime?
-  drawAt          DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  archivedAt      DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+model LotteryDraw {
+  id                String     @id @default(uuid()) @db.Uuid
+  publicId          String     @unique
+  type              DrawType
+  status            DrawStatus @default(SCHEDULED)
+  sequenceNumber    Int
+  participationYear Int?
+  salesOpenAt       DateTime?  @db.Timestamptz(3)
+  salesCloseAt      DateTime?  @db.Timestamptz(3)
+  scheduledDrawAt   DateTime   @db.Timestamptz(3)
+  completedAt       DateTime?  @db.Timestamptz(3)
+  publishedAt       DateTime?  @db.Timestamptz(3)
+  currency          String     @default("USD") @db.Char(3)
+  ticketPriceMinor  BigInt
+  winnerCount       Int        @default(3)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
 
-  purchases       Purchase[]
-  tickets         Ticket[]
+  purchases         Purchase[]
+  tickets           Ticket[]
+  snapshot          TicketSnapshot?
+  randomnessRecords RandomnessEvidence[]
+  winners           DrawWinner[]
+  prizes            Prize[]
 
-  @@index([status])
-  @@index([salesOpenAt])
-  @@index([salesCloseAt])
-  @@map("draws")
+  @@unique([type, sequenceNumber])
+  @@index([status, scheduledDrawAt])
+  @@index([type, participationYear])
+  @@map("lottery_draws")
 }
 
 model Purchase {
-  id                String         @id @default(uuid()) @db.Uuid
-  userId            String         @db.Uuid
-  drawId            String         @db.Uuid
-  status            PurchaseStatus @default(CREATED)
-  ticketQuantity    Int
-  ticketPrice       Decimal        @db.Decimal(12, 2)
-  totalAmount       Decimal        @db.Decimal(12, 2)
-  currency          String         @default("USD") @db.VarChar(3)
-  paymentProvider   String?
-  expiresAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id                   String         @id @default(uuid()) @db.Uuid
+  publicId             String         @unique
+  userId               String         @db.Uuid
+  drawId               String         @db.Uuid
+  status               PurchaseStatus @default(CREATED)
+  requestedTicketCount Int
+  ticketPriceMinor     BigInt
+  totalAmountMinor     BigInt
+  currency             String         @db.Char(3)
+  idempotencyKey       String         @unique
+  expiresAt            DateTime?      @db.Timestamptz(3)
+  paymentConfirmedAt   DateTime?      @db.Timestamptz(3)
+  completedAt          DateTime?      @db.Timestamptz(3)
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
 
-  user              User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  draw              Draw           @relation(fields: [drawId], references: [id], onDelete: Restrict)
-  payments          Payment[]
-  tickets           Ticket[]
-  allocations       AllocationEntry[]
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  draw        LotteryDraw            @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  payments    Payment[]
+  tickets     Ticket[]
+  stateEvents PurchaseStateEvent[]
 
-  @@index([userId])
-  @@index([drawId])
-  @@index([status])
+  @@index([userId, createdAt])
+  @@index([drawId, status])
+  @@index([status, expiresAt])
   @@map("purchases")
+}
+
+model PurchaseStateEvent {
+  id            String         @id @default(uuid()) @db.Uuid
+  purchaseId    String         @db.Uuid
+  fromStatus    PurchaseStatus?
+  toStatus      PurchaseStatus
+  cause         String
+  source        AuditActorType
+  correlationId String
+  metadata      Json?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseId, correlationId, toStatus])
+  @@index([purchaseId, createdAt])
+  @@map("purchase_state_events")
 }
 
 model Payment {
   id                    String        @id @default(uuid()) @db.Uuid
   purchaseId            String        @db.Uuid
   provider              String
-  providerTransactionId String        @unique
-  amount                Decimal       @db.Decimal(12, 2)
-  currency              String        @db.VarChar(3)
-  status                PaymentStatus @default(PENDING)
-  confirmedAt           DateTime?
-  failedAt              DateTime?
-  refundedAt            DateTime?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
+  providerTransactionId String?       @unique
+  status                PaymentStatus @default(CREATED)
+  amountMinor           BigInt
+  currency              String        @db.Char(3)
+  confirmedAt           DateTime?     @db.Timestamptz(3)
+  failureCode           String?
+  failureMessage        String?
+  providerData          Json?
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
 
-  purchase              Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
-  allocations           AllocationEntry[]
+  purchase Purchase         @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  attempts PaymentAttempt[]
+  webhooks WebhookEvent[]
 
-  @@index([purchaseId])
-  @@index([status])
+  @@index([purchaseId, status])
+  @@index([provider, status])
   @@map("payments")
 }
 
+model PaymentAttempt {
+  id                 String               @id @default(uuid()) @db.Uuid
+  paymentId          String               @db.Uuid
+  attemptNumber      Int
+  idempotencyKey     String               @unique
+  providerSessionId  String?              @unique
+  status             PaymentAttemptStatus @default(CREATED)
+  requestPayload     Json?
+  responsePayload    Json?
+  failureCode        String?
+  failureMessage     String?
+  startedAt          DateTime             @default(now()) @db.Timestamptz(3)
+  finishedAt         DateTime?            @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, attemptNumber])
+  @@index([paymentId, status])
+  @@map("payment_attempts")
+}
+
+model WebhookEvent {
+  id              String        @id @default(uuid()) @db.Uuid
+  paymentId       String?       @db.Uuid
+  provider        String
+  providerEventId String
+  eventType       String
+  status          WebhookStatus @default(RECEIVED)
+  signature       String?
+  payloadHash     String
+  payload         Json
+  receivedAt      DateTime      @default(now()) @db.Timestamptz(3)
+  processedAt     DateTime?     @db.Timestamptz(3)
+  errorMessage    String?
+
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+  @@index([paymentId])
+  @@map("webhook_events")
+}
+
 model Ticket {
-  id                 String   @id @default(uuid()) @db.Uuid
-  ticketNumber       BigInt   @unique
-  userId             String   @db.Uuid
-  drawId             String   @db.Uuid
-  purchaseId         String   @db.Uuid
-  annualDrawEligible Boolean  @default(true)
-  createdAt          DateTime @default(now())
+  id             String       @id @default(uuid()) @db.Uuid
+  publicId       String       @unique
+  userId         String       @db.Uuid
+  purchaseId     String       @db.Uuid
+  drawId         String       @db.Uuid
+  numberInDraw   BigInt
+  status         TicketStatus @default(ACTIVE)
+  issuedAt       DateTime     @default(now()) @db.Timestamptz(3)
+  voidedAt       DateTime?    @db.Timestamptz(3)
+  voidReason     String?
 
-  user               User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  draw               Draw     @relation(fields: [drawId], references: [id], onDelete: Restrict)
-  purchase           Purchase @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  purchase      Purchase              @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  draw          LotteryDraw           @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  snapshotEntries TicketSnapshotEntry[]
+  winners         DrawWinner[]
 
-  @@index([userId])
-  @@index([drawId])
+  @@unique([drawId, numberInDraw])
+  @@index([userId, issuedAt])
   @@index([purchaseId])
+  @@index([drawId, status])
   @@map("tickets")
 }
 
-model AllocationEntry {
-  id             String         @id @default(uuid()) @db.Uuid
-  purchaseId     String         @db.Uuid
-  paymentId      String         @db.Uuid
-  type           AllocationType
-  percentage     Decimal        @db.Decimal(5, 2)
-  amount         Decimal        @db.Decimal(12, 2)
-  currency       String         @db.VarChar(3)
-  ticketCount    Int
-  createdAt      DateTime       @default(now())
+model TicketSnapshot {
+  id              String         @id @default(uuid()) @db.Uuid
+  drawId          String         @unique @db.Uuid
+  status          SnapshotStatus @default(BUILDING)
+  ticketCount     BigInt
+  canonicalFormat String
+  hashAlgorithm   String         @default("SHA-256")
+  snapshotHash    String?        @unique
+  builtAt         DateTime?      @db.Timestamptz(3)
+  finalizedAt     DateTime?      @db.Timestamptz(3)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
 
-  purchase       Purchase       @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
-  payment        Payment        @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  draw    LotteryDraw          @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  entries TicketSnapshotEntry[]
 
-  @@unique([paymentId, type])
-  @@index([purchaseId])
-  @@map("allocation_entries")
+  @@index([status, createdAt])
+  @@map("ticket_snapshots")
+}
+
+model TicketSnapshotEntry {
+  id             String @id @default(uuid()) @db.Uuid
+  snapshotId     String @db.Uuid
+  ticketId       String @db.Uuid
+  position       BigInt
+  ticketPublicId String
+  ownerPublicRef String
+
+  snapshot TicketSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  ticket   Ticket         @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  winner   DrawWinner?
+
+  @@unique([snapshotId, position])
+  @@index([snapshotId, ticketPublicId])
+  @@map("ticket_snapshot_entries")
+}
+
+model RandomnessEvidence {
+  id                   String           @id @default(uuid()) @db.Uuid
+  drawId               String           @db.Uuid
+  attemptNumber        Int
+  provider             String           @default("RANDOM_ORG")
+  status               RandomnessStatus @default(CREATED)
+  idempotencyKey       String           @unique
+  requestedMin         BigInt
+  requestedMax         BigInt
+  requestedCount       Int
+  requestPayload       Json?
+  responsePayload      Json?
+  responseHash         String?
+  providerSignature    String?
+  signatureVerified    Boolean?
+  randomPositions      Json?
+  requestedAt          DateTime?        @db.Timestamptz(3)
+  receivedAt           DateTime?        @db.Timestamptz(3)
+  verifiedAt           DateTime?        @db.Timestamptz(3)
+  failureMessage       String?
+  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+
+  draw LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Restrict)
+
+  @@unique([drawId, attemptNumber])
+  @@index([drawId, status])
+  @@map("randomness_evidence")
+}
+
+model DrawWinner {
+  id              String @id @default(uuid()) @db.Uuid
+  drawId          String @db.Uuid
+  ticketId        String @db.Uuid
+  snapshotEntryId String @unique @db.Uuid
+  rank            Int
+  randomPosition  BigInt
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  draw          LotteryDraw       @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  ticket        Ticket            @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  snapshotEntry TicketSnapshotEntry @relation(fields: [snapshotEntryId], references: [id], onDelete: Restrict)
+  prize         Prize?
+
+  @@unique([drawId, rank])
+  @@unique([drawId, ticketId])
+  @@unique([drawId, randomPosition])
+  @@index([drawId])
+  @@map("draw_winners")
+}
+
+model Prize {
+  id          String      @id @default(uuid()) @db.Uuid
+  drawId      String      @db.Uuid
+  winnerId    String      @unique @db.Uuid
+  userId      String      @db.Uuid
+  rank        Int
+  amountMinor BigInt
+  currency    String      @db.Char(3)
+  status      PrizeStatus @default(CREATED)
+  approvedAt  DateTime?   @db.Timestamptz(3)
+  paidAt      DateTime?   @db.Timestamptz(3)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(3)
+
+  draw    LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  winner  DrawWinner  @relation(fields: [winnerId], references: [id], onDelete: Restrict)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  payouts Payout[]
+
+  @@unique([drawId, rank])
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("prizes")
+}
+
+model Payout {
+  id                    String       @id @default(uuid()) @db.Uuid
+  prizeId               String       @db.Uuid
+  userId                String       @db.Uuid
+  status                PayoutStatus @default(CREATED)
+  amountMinor           BigInt
+  currency              String       @db.Char(3)
+  idempotencyKey        String       @unique
+  provider              String?
+  providerTransactionId String?      @unique
+  failureCode           String?
+  failureMessage        String?
+  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
+  processedAt           DateTime?    @db.Timestamptz(3)
+
+  prize   Prize    @relation(fields: [prizeId], references: [id], onDelete: Restrict)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([prizeId, status])
+  @@index([userId, createdAt])
+  @@map("payouts")
+}
+
+model AllocationRule {
+  id                    String   @id @default(uuid()) @db.Uuid
+  version               Int      @unique
+  weeklyJackpotBps      Int
+  annualJackpotBps      Int
+  companyRevenueBps     Int
+  effectiveFrom         DateTime @db.Timestamptz(3)
+  effectiveTo           DateTime? @db.Timestamptz(3)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([effectiveFrom, effectiveTo])
+  @@map("allocation_rules")
+}
+
+model LedgerTransaction {
+  id             String                @id @default(uuid()) @db.Uuid
+  type           LedgerTransactionType
+  idempotencyKey String                @unique
+  referenceType  String
+  referenceId    String
+  currency       String                @db.Char(3)
+  description    String?
+  metadata       Json?
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+
+  postings LedgerPosting[]
+
+  @@index([referenceType, referenceId])
+  @@index([type, createdAt])
+  @@map("ledger_transactions")
+}
+
+model LedgerPosting {
+  id            String            @id @default(uuid()) @db.Uuid
+  transactionId String            @db.Uuid
+  accountCode   LedgerAccountCode
+  side          LedgerSide
+  amountMinor   BigInt
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([transactionId])
+  @@index([accountCode, createdAt])
+  @@map("ledger_postings")
 }
 
 model AuditLog {
-  id             String         @id @default(uuid()) @db.Uuid
-  userId         String?        @db.Uuid
-  actorType      AuditActorType
-  actorId        String?
-  action         String
-  entityType     String
-  entityId       String
-  previousState  Json?
-  newState       Json?
-  metadata       Json?
-  correlationId  String?
-  createdAt      DateTime       @default(now())
+  id            String         @id @default(uuid()) @db.Uuid
+  actorType     AuditActorType
+  actorId       String?
+  action        String
+  entityType    String
+  entityId      String
+  correlationId String
+  requestId     String?
+  ipAddress     String?
+  previousState Json?
+  newState      Json?
+  metadata      Json?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
 
-  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-
-  @@index([entityType, entityId])
+  @@index([entityType, entityId, createdAt])
+  @@index([actorType, actorId, createdAt])
   @@index([correlationId])
-  @@index([createdAt])
   @@map("audit_logs")
 }
