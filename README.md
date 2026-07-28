@@ -1,39 +1,33 @@
 # Amazing Chance
 
-Transparent lottery platform. The repository now contains the first runnable development foundation.
+Amazing Chance is an online lottery platform built as a TypeScript monorepo.
 
-## Requirements
+## MVP
+- Ticket price: USD 1.00
+- Weekly draw
+- Allocation: 70% weekly prize pool, 20% company revenue, 10% annual prize fund
+- Three weekly winners receive 50%, 30%, and 20%
+- RANDOM.ORG is the approved randomness provider
+- No internal customer wallet in MVP
 
-- Node.js 24+
-- pnpm 10+
-- Docker Desktop
+## Stack
+NestJS, Next.js, Prisma 7, PostgreSQL, Redis, Docker Compose, pnpm.
 
-## Local setup
-
+## Local development
 ```bash
-cp .env.example .env
 docker compose up -d
 pnpm install
-pnpm db:generate
-pnpm db:migrate
-pnpm dev
 ```
+Current local endpoints:
+- Web: `http://localhost:3000`
+- API: `http://localhost:3001`
+- Health: `http://localhost:3001/health`
 
-Open:
+## Documentation
+- [Product](docs/01-PRODUCT.md)
+- [Architecture](docs/02-ARCHITECTURE.md)
+- [Database](docs/03-DATABASE.md)
+- [Roadmap](docs/10-ROADMAP.md)
+- [Architecture decisions](docs/ADR/)
 
-- Web: http://localhost:3000
-- API health: http://localhost:3001/health
-- Prisma Studio: `pnpm db:studio`
-
-## Current implementation
-
-- Next.js web application
-- NestJS API
-- PostgreSQL and Redis via Docker Compose
-- Prisma schema with initial `User` model
-- API health endpoint
-- GitHub Actions build/type-check workflow
-
-## Next milestone
-
-Implement user registration with password hashing, email normalization, duplicate prevention, immutable audit event, and integration tests.
+AI agents must read [AGENTS.md](AGENTS.md) before changing the repository.

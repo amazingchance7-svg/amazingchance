@@ -1,0 +1,19 @@
+---
+description: Amazing Chance repository rules
+alwaysApply: true
+---
+
+Before editing:
+1. Read `AGENTS.md` and relevant `docs/` files.
+2. Inspect existing code and tests.
+3. Do not invent or change business rules.
+4. Keep the MVP as a modular monolith.
+5. Use Prisma for database access.
+6. Store money in integer minor units.
+7. Preserve immutable snapshots, ledger entries, and audit evidence.
+8. Validate external input and make retries idempotent.
+9. Never expose secrets or personal data.
+10. Run build, type checking, and applicable tests.
+11. Report changed files, commands, results, and risks.
+
+When requirements conflict or remain unclear, stop and ask.
