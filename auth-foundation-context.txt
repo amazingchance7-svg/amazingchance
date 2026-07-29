@@ -1,0 +1,1408 @@
+
+========================================
+FILE: .\package.json
+========================================
+{
+  "name": "amazing-chance",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @amazing-chance/web --filter @amazing-chance/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @amazing-chance/api prisma:generate",
+    "db:migrate": "pnpm --filter @amazing-chance/api prisma:migrate",
+    "db:studio": "pnpm --filter @amazing-chance/api prisma:studio"
+  }
+}
+
+
+========================================
+FILE: .\pnpm-workspace.yaml
+========================================
+packages:
+  - apps/*
+  - packages/*
+
+ignoredBuiltDependencies:
+  - prisma
+
+
+========================================
+FILE: .\apps\api\package.json
+========================================
+{
+  "name": "@amazing-chance/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.28",
+    "@nestjs/config": "4.0.2",
+    "@nestjs/core": "11.1.28",
+    "@nestjs/jwt": "11.0.1",
+    "@nestjs/passport": "11.0.5",
+    "@nestjs/platform-express": "11.1.28",
+    "@prisma/adapter-pg": "7.9.0",
+    "@prisma/client": "7.9.0",
+    "argon2": "0.44.0",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.14.2",
+    "passport": "0.7.0",
+    "passport-jwt": "4.0.1",
+    "pg": "^8.22.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "11.0.10",
+    "@nestjs/schematics": "11.0.7",
+    "@types/express": "5.0.3",
+    "@types/node": "24.3.0",
+    "@types/passport-jwt": "4.0.1",
+    "@types/pg": "^8.20.0",
+    "eslint": "9.34.0",
+    "prisma": "7.9.0",
+    "typescript": "5.9.3"
+  }
+}
+
+
+========================================
+FILE: .\apps\api\tsconfig.json
+========================================
+{
+    "compilerOptions":  {
+                            "module":  "commonjs",
+                            "declaration":  true,
+                            "removeComments":  true,
+                            "emitDecoratorMetadata":  true,
+                            "experimentalDecorators":  true,
+                            "allowSyntheticDefaultImports":  true,
+                            "target":  "ES2022",
+                            "sourceMap":  true,
+                            "outDir":  "./dist",
+                            "incremental":  true,
+                            "strict":  true,
+                            "skipLibCheck":  true
+                        },
+    "include":  [
+                    "src/**/*.ts"
+                ]
+}
+
+
+========================================
+FILE: .\apps\api\tsconfig.build.json
+========================================
+FILE NOT FOUND
+
+========================================
+FILE: .\apps\api\src\app.module.ts
+========================================
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+
+import { AuthModule } from './auth/auth.module';
+import { validateEnvironment } from './config/environment.validation';
+import { HealthModule } from './health/health.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      envFilePath: ['apps/api/.env', '.env'],
+      validate: validateEnvironment,
+    }),
+    PrismaModule,
+    HealthModule,
+    UsersModule,
+    AuthModule,
+  ],
+})
+export class AppModule {}
+
+========================================
+FILE: .\apps\api\src\auth\auth.service.ts
+========================================
+import {
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'crypto';
+import { createHash } from 'crypto';
+import * as argon2 from 'argon2';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
+import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RegisterDto } from './dto/register.dto';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  ping() {
+    return {
+      message: 'Auth service is working',
+      usersService: !!this.usersService,
+      jwtService: !!this.jwtService,
+      prismaService: !!this.prisma,
+    };
+  }
+
+  async register(dto: RegisterDto) {
+    const passwordHash = await argon2.hash(dto.password);
+
+    return this.usersService.create({
+      email: dto.email,
+      passwordHash,
+    });
+  }
+
+  async login(dto: LoginDto) {
+    const user = await this.usersService.findByEmailForAuth(dto.email);
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const passwordMatches = await argon2.verify(
+      user.passwordHash,
+      dto.password,
+    );
+
+    if (!passwordMatches) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const tokens = await this.createTokenPair({
+      id: user.id,
+      email: user.email,
+    });
+
+    return {
+      ...tokens,
+      user: this.toPublicUser(user),
+    };
+  }
+
+  async refresh(dto: RefreshTokenDto) {
+    const payload = await this.verifyRefreshToken(dto.refreshToken);
+
+    const tokenHash = this.hashToken(dto.refreshToken);
+
+    const storedToken = await this.prisma.refreshToken.findUnique({
+      where: {
+        tokenHash,
+      },
+    });
+
+    if (
+      !storedToken ||
+      storedToken.userId !== payload.sub ||
+      storedToken.revokedAt !== null ||
+      storedToken.expiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException(
+        'Refresh token is invalid or expired',
+      );
+    }
+
+    const revokeResult = await this.prisma.refreshToken.updateMany({
+      where: {
+        id: storedToken.id,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+
+    if (revokeResult.count !== 1) {
+      throw new UnauthorizedException(
+        'Refresh token has already been used',
+      );
+    }
+
+    const user = await this.usersService.findOne(payload.sub);
+
+    const tokens = await this.createTokenPair({
+      id: user.id,
+      email: user.email,
+    });
+
+    return {
+      ...tokens,
+      user,
+    };
+  }
+
+  async logout(dto: RefreshTokenDto) {
+    const tokenHash = this.hashToken(dto.refreshToken);
+
+    await this.prisma.refreshToken.updateMany({
+      where: {
+        tokenHash,
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: new Date(),
+      },
+    });
+
+    return {
+      message: 'Logged out successfully',
+    };
+  }
+
+  private async createTokenPair(user: {
+    id: string;
+    email: string;
+  }) {
+    const accessSecret =
+      this.configService.getOrThrow<string>(
+        'JWT_ACCESS_SECRET',
+      );
+
+    const refreshSecret =
+      this.configService.getOrThrow<string>(
+        'JWT_REFRESH_SECRET',
+      );
+
+    const accessTtlSeconds = Number(
+      this.configService.getOrThrow<number>(
+        'JWT_ACCESS_TTL_SECONDS',
+      ),
+    );
+
+    const refreshTtlSeconds = Number(
+      this.configService.getOrThrow<number>(
+        'JWT_REFRESH_TTL_SECONDS',
+      ),
+    );
+
+    const refreshTokenId = randomUUID();
+
+    const accessPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      type: 'access',
+    };
+
+    const refreshPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      type: 'refresh',
+      jti: refreshTokenId,
+    };
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(accessPayload, {
+        secret: accessSecret,
+        expiresIn: accessTtlSeconds,
+      }),
+      this.jwtService.signAsync(refreshPayload, {
+        secret: refreshSecret,
+        expiresIn: refreshTtlSeconds,
+      }),
+    ]);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: this.hashToken(refreshToken),
+        expiresAt: new Date(
+          Date.now() + refreshTtlSeconds * 1000,
+        ),
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      accessTokenExpiresIn: accessTtlSeconds,
+      refreshTokenExpiresIn: refreshTtlSeconds,
+    };
+  }
+
+  private async verifyRefreshToken(
+    refreshToken: string,
+  ): Promise<JwtPayload> {
+    try {
+      const payload =
+        await this.jwtService.verifyAsync<JwtPayload>(
+          refreshToken,
+          {
+            secret:
+              this.configService.getOrThrow<string>(
+                'JWT_REFRESH_SECRET',
+              ),
+          },
+        );
+
+      if (
+        payload.type !== 'refresh' ||
+        !payload.sub ||
+        !payload.email ||
+        !payload.jti
+      ) {
+        throw new UnauthorizedException(
+          'Invalid refresh token',
+        );
+      }
+
+      return payload;
+    } catch {
+      throw new UnauthorizedException(
+        'Refresh token is invalid or expired',
+      );
+    }
+  }
+
+  private hashToken(token: string): string {
+    return createHash('sha256')
+      .update(token)
+      .digest('hex');
+  }
+
+  private toPublicUser(user: {
+    id: string;
+    email: string;
+    status: unknown;
+    emailVerifiedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: user.id,
+      email: user.email,
+      status: user.status,
+      emailVerifiedAt: user.emailVerifiedAt,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+}
+
+========================================
+FILE: .\apps\api\src\auth\auth.controller.ts
+========================================
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { Request } from 'express';
+
+import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RegisterDto } from './dto/register.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private readonly authService: AuthService,
+  ) {}
+
+  @Get('ping')
+  ping() {
+    return this.authService.ping();
+  }
+
+  @Post('register')
+  register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Post('login')
+  login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto);
+  }
+
+  @Post('logout')
+  logout(@Body() dto: RefreshTokenDto) {
+    return this.authService.logout(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me(@Req() req: Request) {
+    return req.user;
+  }
+}
+
+========================================
+FILE: .\apps\api\src\auth\auth.module.ts
+========================================
+import { Module } from '@nestjs/common';
+import {
+  ConfigModule,
+  ConfigService,
+} from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+
+import { PrismaModule } from '../prisma/prisma.module';
+import { UsersModule } from '../users/users.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
+
+@Module({
+  imports: [
+    ConfigModule,
+    PrismaModule,
+    UsersModule,
+    PassportModule.register({
+      defaultStrategy: 'jwt',
+    }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (
+        configService: ConfigService,
+      ) => ({
+        secret:
+          configService.getOrThrow<string>(
+            'JWT_ACCESS_SECRET',
+          ),
+        signOptions: {
+          expiresIn: Number(
+            configService.getOrThrow<number>(
+              'JWT_ACCESS_TTL_SECONDS',
+            ),
+          ),
+        },
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [
+    AuthService,
+    JwtModule,
+    PassportModule,
+  ],
+})
+export class AuthModule {}
+
+========================================
+FILE: .\apps\api\src\auth\strategies\jwt.strategy.ts
+========================================
+import {
+    Injectable,
+    UnauthorizedException,
+  } from '@nestjs/common';
+  import { ConfigService } from '@nestjs/config';
+  import { PassportStrategy } from '@nestjs/passport';
+  import { ExtractJwt, Strategy } from 'passport-jwt';
+  
+  import { UsersService } from '../../users/users.service';
+  import { JwtPayload } from '../interfaces/jwt-payload.interface';
+  
+  @Injectable()
+  export class JwtStrategy extends PassportStrategy(
+    Strategy,
+    'jwt',
+  ) {
+    constructor(
+      configService: ConfigService,
+      private readonly usersService: UsersService,
+    ) {
+      super({
+        jwtFromRequest:
+          ExtractJwt.fromAuthHeaderAsBearerToken(),
+        ignoreExpiration: false,
+        secretOrKey:
+          configService.getOrThrow<string>(
+            'JWT_ACCESS_SECRET',
+          ),
+      });
+    }
+  
+    async validate(payload: JwtPayload) {
+      if (payload.type !== 'access') {
+        throw new UnauthorizedException(
+          'Invalid access token',
+        );
+      }
+  
+      return this.usersService.findOne(payload.sub);
+    }
+  }
+
+========================================
+FILE: .\apps\api\src\auth\guards\jwt-auth.guard.ts
+========================================
+import { Injectable } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {}
+
+========================================
+FILE: .\apps\api\src\auth\interfaces\jwt-payload.interface.ts
+========================================
+export type JwtTokenType = 'access' | 'refresh';
+
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  type: JwtTokenType;
+  jti?: string;
+  iat?: number;
+  exp?: number;
+}
+
+========================================
+FILE: .\apps\api\src\auth\dto\login.dto.ts
+========================================
+import { IsEmail, IsString, MinLength } from 'class-validator';
+
+export class LoginDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
+
+========================================
+FILE: .\apps\api\src\auth\dto\register.dto.ts
+========================================
+import {
+    IsEmail,
+    IsString,
+    Matches,
+    MaxLength,
+    MinLength,
+  } from 'class-validator';
+  
+  export class RegisterDto {
+    @IsEmail()
+    email!: string;
+  
+    @IsString()
+    @MinLength(8)
+    @MaxLength(128)
+    @Matches(/[a-z]/, {
+      message: 'Password must contain a lowercase letter',
+    })
+    @Matches(/[A-Z]/, {
+      message: 'Password must contain an uppercase letter',
+    })
+    @Matches(/[0-9]/, {
+      message: 'Password must contain a number',
+    })
+    password!: string;
+  }
+
+========================================
+FILE: .\apps\api\src\auth\dto\refresh-token.dto.ts
+========================================
+import { IsNotEmpty, IsString } from 'class-validator';
+
+export class RefreshTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  refreshToken!: string;
+}
+
+========================================
+FILE: .\apps\api\src\users\dto\create-user.dto.ts
+========================================
+import { IsEmail, IsString, MinLength } from 'class-validator';
+
+export class CreateUserDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @MinLength(8)
+  passwordHash!: string;
+}
+
+
+========================================
+FILE: .\apps\api\src\users\users.service.ts
+========================================
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, UserStatus } from '@prisma/client';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateUserDto } from './dto/create-user.dto';
+
+const publicUserSelect = {
+  id: true,
+  email: true,
+  status: true,
+  emailVerifiedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UserSelect;
+
+@Injectable()
+export class UsersService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(dto: CreateUserDto) {
+    try {
+      return await this.prisma.user.create({
+        data: {
+          email: dto.email.trim().toLowerCase(),
+          passwordHash: dto.passwordHash,
+        },
+        select: publicUserSelect,
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('User with this email already exists');
+      }
+
+      throw error;
+    }
+  }
+
+  async findAll() {
+    return this.prisma.user.findMany({
+      select: publicUserSelect,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async findOne(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: publicUserSelect,
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async findByEmailForAuth(email: string) {
+    return this.prisma.user.findUnique({
+      where: {
+        email: email.trim().toLowerCase(),
+      },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        status: true,
+        emailVerifiedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async updateStatus(id: string, status: UserStatus) {
+    await this.findOne(id);
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { status },
+      select: publicUserSelect,
+    });
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
+
+    await this.prisma.user.delete({
+      where: { id },
+    });
+  }
+}
+
+========================================
+FILE: .\apps\api\src\prisma\prisma.module.ts
+========================================
+import { Global, Module } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+
+@Global()
+@Module({
+  providers: [PrismaService],
+  exports: [PrismaService],
+})
+export class PrismaModule {}
+
+========================================
+FILE: .\apps\api\src\prisma\prisma.service.ts
+========================================
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
+
+@Injectable()
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
+  constructor() {
+    const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable is not defined');
+    }
+
+    const adapter = new PrismaPg({
+      connectionString,
+    });
+
+    super({ adapter });
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.$connect();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect();
+  }
+}
+
+========================================
+FILE: .\apps\api\prisma\schema.prisma
+========================================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum DrawType {
+  WEEKLY
+  ANNUAL
+}
+
+enum DrawStatus {
+  SCHEDULED
+  SALES_OPEN
+  SALES_CLOSED
+  SNAPSHOT_BUILDING
+  SNAPSHOT_FINALIZED
+  RANDOMNESS_PENDING
+  RANDOMNESS_VERIFIED
+  WINNER_SELECTION_PENDING
+  COMPLETED
+  PUBLISHED
+  MANUAL_REVIEW
+  FAILED
+  CANCELLED
+}
+
+enum PurchaseStatus {
+  CREATED
+  PAYMENT_PENDING
+  PAYMENT_CONFIRMED
+  TICKET_ALLOCATION_PENDING
+  COMPLETED
+  PAYMENT_FAILED
+  EXPIRED
+  CANCELLED
+  MANUAL_REVIEW
+  REFUND_PENDING
+  REFUNDED
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  MANUAL_REVIEW
+  REFUND_PENDING
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum PaymentAttemptStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  VERIFIED
+  PROCESSED
+  DUPLICATE
+  REJECTED
+  FAILED
+}
+
+enum TicketStatus {
+  ACTIVE
+  VOIDED_BY_REFUND
+}
+
+enum SnapshotStatus {
+  BUILDING
+  FINALIZED
+}
+
+enum RandomnessStatus {
+  CREATED
+  REQUESTED
+  RECEIVED
+  VERIFIED
+  REJECTED
+  FAILED
+}
+
+enum PrizeStatus {
+  CREATED
+  CLAIM_PENDING
+  APPROVED
+  PAYOUT_PENDING
+  PAID
+  WITHHELD
+  CANCELLED
+}
+
+enum PayoutStatus {
+  CREATED
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  MANUAL_REVIEW
+}
+
+enum LedgerTransactionType {
+  PAYMENT_CONFIRMED
+  PAYMENT_ALLOCATION
+  PRIZE_RECOGNIZED
+  PAYOUT_COMPLETED
+  REFUND_COMPLETED
+  ADJUSTMENT
+}
+
+enum LedgerAccountCode {
+  PAYMENT_CLEARING
+  CASH
+  WEEKLY_JACKPOT
+  ANNUAL_JACKPOT
+  COMPANY_REVENUE
+  PRIZE_PAYABLE
+  PAYOUT_CLEARING
+  REFUND_PAYABLE
+}
+
+enum LedgerSide {
+  DEBIT
+  CREDIT
+}
+
+enum AuditActorType {
+  USER
+  ADMIN
+  SYSTEM
+  PAYMENT_PROVIDER
+  RANDOMNESS_PROVIDER
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  email           String     @unique
+  passwordHash    String
+  status          UserStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt DateTime?  @db.Timestamptz(3)
+  createdAt       DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @db.Timestamptz(3)
+
+  purchases     Purchase[]
+  tickets       Ticket[]
+  prizes        Prize[]
+  payouts       Payout[]
+  refreshTokens RefreshToken[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model LotteryDraw {
+  id                String     @id @default(uuid()) @db.Uuid
+  publicId          String     @unique
+  type              DrawType
+  status            DrawStatus @default(SCHEDULED)
+  sequenceNumber    Int
+  participationYear Int?
+  salesOpenAt       DateTime?  @db.Timestamptz(3)
+  salesCloseAt      DateTime?  @db.Timestamptz(3)
+  scheduledDrawAt   DateTime   @db.Timestamptz(3)
+  completedAt       DateTime?  @db.Timestamptz(3)
+  publishedAt       DateTime?  @db.Timestamptz(3)
+  currency          String     @default("USD") @db.Char(3)
+  ticketPriceMinor  BigInt
+  winnerCount       Int        @default(3)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
+
+  purchases         Purchase[]
+  tickets           Ticket[]
+  snapshot          TicketSnapshot?
+  randomnessRecords RandomnessEvidence[]
+  winners           DrawWinner[]
+  prizes            Prize[]
+
+  @@unique([type, sequenceNumber])
+  @@index([status, scheduledDrawAt])
+  @@index([type, participationYear])
+  @@map("lottery_draws")
+}
+
+model Purchase {
+  id                   String         @id @default(uuid()) @db.Uuid
+  publicId             String         @unique
+  userId               String         @db.Uuid
+  drawId               String         @db.Uuid
+  status               PurchaseStatus @default(CREATED)
+  requestedTicketCount Int
+  ticketPriceMinor     BigInt
+  totalAmountMinor     BigInt
+  currency             String         @db.Char(3)
+  idempotencyKey       String         @unique
+  expiresAt            DateTime?      @db.Timestamptz(3)
+  paymentConfirmedAt   DateTime?      @db.Timestamptz(3)
+  completedAt          DateTime?      @db.Timestamptz(3)
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
+
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  draw        LotteryDraw          @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  payments    Payment[]
+  tickets     Ticket[]
+  stateEvents PurchaseStateEvent[]
+
+  @@index([userId, createdAt])
+  @@index([drawId, status])
+  @@index([status, expiresAt])
+  @@map("purchases")
+}
+
+model PurchaseStateEvent {
+  id            String          @id @default(uuid()) @db.Uuid
+  purchaseId    String          @db.Uuid
+  fromStatus    PurchaseStatus?
+  toStatus      PurchaseStatus
+  cause         String
+  source        AuditActorType
+  correlationId String
+  metadata      Json?
+  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseId, correlationId, toStatus])
+  @@index([purchaseId, createdAt])
+  @@map("purchase_state_events")
+}
+
+model Payment {
+  id                    String        @id @default(uuid()) @db.Uuid
+  purchaseId            String        @db.Uuid
+  provider              String
+  providerTransactionId String?       @unique
+  status                PaymentStatus @default(CREATED)
+  amountMinor           BigInt
+  currency              String        @db.Char(3)
+  confirmedAt           DateTime?     @db.Timestamptz(3)
+  failureCode           String?
+  failureMessage        String?
+  providerData          Json?
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+
+  purchase Purchase         @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  attempts PaymentAttempt[]
+  webhooks WebhookEvent[]
+
+  @@index([purchaseId, status])
+  @@index([provider, status])
+  @@map("payments")
+}
+
+model PaymentAttempt {
+  id                String               @id @default(uuid()) @db.Uuid
+  paymentId         String               @db.Uuid
+  attemptNumber     Int
+  idempotencyKey    String               @unique
+  providerSessionId String?              @unique
+  status            PaymentAttemptStatus @default(CREATED)
+  requestPayload    Json?
+  responsePayload   Json?
+  failureCode       String?
+  failureMessage    String?
+  startedAt         DateTime             @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?            @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, attemptNumber])
+  @@index([paymentId, status])
+  @@map("payment_attempts")
+}
+
+model WebhookEvent {
+  id              String        @id @default(uuid()) @db.Uuid
+  paymentId       String?       @db.Uuid
+  provider        String
+  providerEventId String
+  eventType       String
+  status          WebhookStatus @default(RECEIVED)
+  signature       String?
+  payloadHash     String
+  payload         Json
+  receivedAt      DateTime      @default(now()) @db.Timestamptz(3)
+  processedAt     DateTime?     @db.Timestamptz(3)
+  errorMessage    String?
+
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+  @@index([paymentId])
+  @@map("webhook_events")
+}
+
+model Ticket {
+  id           String       @id @default(uuid()) @db.Uuid
+  publicId     String       @unique
+  userId       String       @db.Uuid
+  purchaseId   String       @db.Uuid
+  drawId       String       @db.Uuid
+  numberInDraw BigInt
+  status       TicketStatus @default(ACTIVE)
+  issuedAt     DateTime     @default(now()) @db.Timestamptz(3)
+  voidedAt     DateTime?    @db.Timestamptz(3)
+  voidReason   String?
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  purchase        Purchase              @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  draw            LotteryDraw           @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  snapshotEntries TicketSnapshotEntry[]
+  winners         DrawWinner[]
+
+  @@unique([drawId, numberInDraw])
+  @@index([userId, issuedAt])
+  @@index([purchaseId])
+  @@index([drawId, status])
+  @@map("tickets")
+}
+
+model TicketSnapshot {
+  id              String         @id @default(uuid()) @db.Uuid
+  drawId          String         @unique @db.Uuid
+  status          SnapshotStatus @default(BUILDING)
+  ticketCount     BigInt
+  canonicalFormat String
+  hashAlgorithm   String         @default("SHA-256")
+  snapshotHash    String?        @unique
+  builtAt         DateTime?      @db.Timestamptz(3)
+  finalizedAt     DateTime?      @db.Timestamptz(3)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+
+  draw    LotteryDraw           @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  entries TicketSnapshotEntry[]
+
+  @@index([status, createdAt])
+  @@map("ticket_snapshots")
+}
+
+model TicketSnapshotEntry {
+  id             String @id @default(uuid()) @db.Uuid
+  snapshotId     String @db.Uuid
+  ticketId       String @db.Uuid
+  position       BigInt
+  ticketPublicId String
+  ownerPublicRef String
+
+  snapshot TicketSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  ticket   Ticket         @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  winner   DrawWinner?
+
+  @@unique([snapshotId, position])
+  @@index([snapshotId, ticketPublicId])
+  @@map("ticket_snapshot_entries")
+}
+
+model RandomnessEvidence {
+  id                String           @id @default(uuid()) @db.Uuid
+  drawId            String           @db.Uuid
+  attemptNumber     Int
+  provider          String           @default("RANDOM_ORG")
+  status            RandomnessStatus @default(CREATED)
+  idempotencyKey    String           @unique
+  requestedMin      BigInt
+  requestedMax      BigInt
+  requestedCount    Int
+  requestPayload    Json?
+  responsePayload   Json?
+  responseHash      String?
+  providerSignature String?
+  signatureVerified Boolean?
+  randomPositions   Json?
+  requestedAt       DateTime?        @db.Timestamptz(3)
+  receivedAt        DateTime?        @db.Timestamptz(3)
+  verifiedAt        DateTime?        @db.Timestamptz(3)
+  failureMessage    String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+
+  draw LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Restrict)
+
+  @@unique([drawId, attemptNumber])
+  @@index([drawId, status])
+  @@map("randomness_evidence")
+}
+
+model DrawWinner {
+  id              String   @id @default(uuid()) @db.Uuid
+  drawId          String   @db.Uuid
+  ticketId        String   @db.Uuid
+  snapshotEntryId String   @unique @db.Uuid
+  rank            Int
+  randomPosition  BigInt
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  draw          LotteryDraw         @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  ticket        Ticket              @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  snapshotEntry TicketSnapshotEntry @relation(fields: [snapshotEntryId], references: [id], onDelete: Restrict)
+  prize         Prize?
+
+  @@unique([drawId, rank])
+  @@unique([drawId, ticketId])
+  @@unique([drawId, randomPosition])
+  @@index([drawId])
+  @@map("draw_winners")
+}
+
+model Prize {
+  id          String      @id @default(uuid()) @db.Uuid
+  drawId      String      @db.Uuid
+  winnerId    String      @unique @db.Uuid
+  userId      String      @db.Uuid
+  rank        Int
+  amountMinor BigInt
+  currency    String      @db.Char(3)
+  status      PrizeStatus @default(CREATED)
+  approvedAt  DateTime?   @db.Timestamptz(3)
+  paidAt      DateTime?   @db.Timestamptz(3)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(3)
+
+  draw    LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  winner  DrawWinner  @relation(fields: [winnerId], references: [id], onDelete: Restrict)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  payouts Payout[]
+
+  @@unique([drawId, rank])
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@map("prizes")
+}
+
+model Payout {
+  id                    String       @id @default(uuid()) @db.Uuid
+  prizeId               String       @db.Uuid
+  userId                String       @db.Uuid
+  status                PayoutStatus @default(CREATED)
+  amountMinor           BigInt
+  currency              String       @db.Char(3)
+  idempotencyKey        String       @unique
+  provider              String?
+  providerTransactionId String?      @unique
+  failureCode           String?
+  failureMessage        String?
+  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
+  processedAt           DateTime?    @db.Timestamptz(3)
+
+  prize Prize @relation(fields: [prizeId], references: [id], onDelete: Restrict)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([prizeId, status])
+  @@index([userId, createdAt])
+  @@map("payouts")
+}
+
+model AllocationRule {
+  id                String    @id @default(uuid()) @db.Uuid
+  version           Int       @unique
+  weeklyJackpotBps  Int
+  annualJackpotBps  Int
+  companyRevenueBps Int
+  effectiveFrom     DateTime  @db.Timestamptz(3)
+  effectiveTo       DateTime? @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([effectiveFrom, effectiveTo])
+  @@map("allocation_rules")
+}
+
+model LedgerTransaction {
+  id             String                @id @default(uuid()) @db.Uuid
+  type           LedgerTransactionType
+  idempotencyKey String                @unique
+  referenceType  String
+  referenceId    String
+  currency       String                @db.Char(3)
+  description    String?
+  metadata       Json?
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+
+  postings LedgerPosting[]
+
+  @@index([referenceType, referenceId])
+  @@index([type, createdAt])
+  @@map("ledger_transactions")
+}
+
+model LedgerPosting {
+  id            String            @id @default(uuid()) @db.Uuid
+  transactionId String            @db.Uuid
+  accountCode   LedgerAccountCode
+  side          LedgerSide
+  amountMinor   BigInt
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([transactionId])
+  @@index([accountCode, createdAt])
+  @@map("ledger_postings")
+}
+
+model AuditLog {
+  id            String         @id @default(uuid()) @db.Uuid
+  actorType     AuditActorType
+  actorId       String?
+  action        String
+  entityType    String
+  entityId      String
+  correlationId String
+  requestId     String?
+  ipAddress     String?
+  previousState Json?
+  newState      Json?
+  metadata      Json?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorType, actorId, createdAt])
+  @@index([correlationId])
+  @@map("audit_logs")
+}
+
+
+========================================
+FILE: .\.env.example
+========================================
+POSTGRES_DB=amazing_chance
+POSTGRES_USER=amazing_chance
+POSTGRES_PASSWORD=change_me
+DATABASE_URL=postgresql://amazing_chance:change_me@localhost:5432/amazing_chance?schema=public
+REDIS_URL=redis://localhost:6379
+API_PORT=3001
+NEXT_PUBLIC_API_URL=http://localhost:3001
+
+
+========================================
+FILE: .\.gitignore
+========================================
+node_modules
+.next
+dist
+coverage
+.env
+.env.local
+*.log
+.DS_Store
+apps/api/prisma/dev.db
+
+C:\Projects\amazingchance\apps\api\src\auth\auth.controller.ts
+C:\Projects\amazingchance\apps\api\src\auth\auth.module.ts
+C:\Projects\amazingchance\apps\api\src\auth\auth.service.ts
+C:\Projects\amazingchance\apps\api\src\auth\dto\login.dto.ts
+C:\Projects\amazingchance\apps\api\src\auth\dto\refresh-token.dto.ts
+C:\Projects\amazingchance\apps\api\src\auth\dto\register.dto.ts
+C:\Projects\amazingchance\apps\api\src\auth\guards\jwt-auth.guard.ts
+C:\Projects\amazingchance\apps\api\src\auth\interfaces\jwt-payload.interface.ts
+C:\Projects\amazingchance\apps\api\src\auth\strategies\jwt.strategy.ts

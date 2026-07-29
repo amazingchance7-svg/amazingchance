@@ -1,0 +1,152 @@
+diff --git a/apps/api/package.json b/apps/api/package.json
+index e4c509a..2755cee 100644
+--- a/apps/api/package.json
++++ b/apps/api/package.json
+@@ -16,10 +16,15 @@
+     "@nestjs/common": "11.1.28",
+     "@nestjs/config": "4.0.2",
+     "@nestjs/core": "11.1.28",
++    "@nestjs/jwt": "11.0.1",
++    "@nestjs/passport": "11.0.5",
+     "@nestjs/platform-express": "11.1.28",
+     "@prisma/client": "7.9.0",
++    "argon2": "0.44.0",
+     "class-transformer": "0.5.1",
+     "class-validator": "0.14.2",
++    "passport": "0.7.0",
++    "passport-jwt": "4.0.1",
+     "reflect-metadata": "0.2.2",
+     "rxjs": "7.8.2"
+   },
+@@ -28,6 +33,7 @@
+     "@nestjs/schematics": "11.0.7",
+     "@types/express": "5.0.3",
+     "@types/node": "24.3.0",
++    "@types/passport-jwt": "4.0.1",
+     "eslint": "9.34.0",
+     "prisma": "7.9.0",
+     "typescript": "7.0.2"
+diff --git a/apps/api/src/app.module.ts b/apps/api/src/app.module.ts
+index f0ad71d..b35449c 100644
+--- a/apps/api/src/app.module.ts
++++ b/apps/api/src/app.module.ts
+@@ -1,5 +1,6 @@
+ import { Module } from '@nestjs/common';
+ import { ConfigModule } from '@nestjs/config';
++import { AuthModule } from './auth/auth.module';
+ import { validateEnvironment } from './config/environment.validation';
+ import { HealthModule } from './health/health.module';
+ import { PrismaModule } from './prisma/prisma.module';
+@@ -15,6 +16,7 @@ import { UsersModule } from './users/users.module';
+     PrismaModule,
+     HealthModule,
+     UsersModule,
++    AuthModule,
+   ],
+ })
+ export class AppModule {}
+diff --git a/apps/api/src/config/environment.validation.ts b/apps/api/src/config/environment.validation.ts
+index fae1575..ea29bb5 100644
+--- a/apps/api/src/config/environment.validation.ts
++++ b/apps/api/src/config/environment.validation.ts
+@@ -34,6 +34,15 @@ class EnvironmentVariables {
+     protocols: ['redis'],
+   })
+   REDIS_URL!: string;
++
++  @IsString()
++  @IsNotEmpty()
++  JWT_ACCESS_SECRET!: string;
++
++  @IsInt()
++  @Min(60)
++  @Max(86400)
++  JWT_ACCESS_TTL_SECONDS = 900;
+ }
+ 
+ export function validateEnvironment(
+diff --git a/apps/api/src/users/users.controller.ts b/apps/api/src/users/users.controller.ts
+index c303ee9..a2f4bd5 100644
+--- a/apps/api/src/users/users.controller.ts
++++ b/apps/api/src/users/users.controller.ts
+@@ -8,9 +8,7 @@ import {
+   Param,
+   ParseUUIDPipe,
+   Patch,
+-  Post,
+ } from '@nestjs/common';
+-import { CreateUserDto } from './dto/create-user.dto';
+ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+ import { UsersService } from './users.service';
+ 
+@@ -18,11 +16,6 @@ import { UsersService } from './users.service';
+ export class UsersController {
+   constructor(private readonly usersService: UsersService) {}
+ 
+-  @Post()
+-  create(@Body() dto: CreateUserDto) {
+-    return this.usersService.create(dto);
+-  }
+-
+   @Get()
+   findAll() {
+     return this.usersService.findAll();
+diff --git a/apps/api/src/users/users.service.ts b/apps/api/src/users/users.service.ts
+index 46615ab..42d4078 100644
+--- a/apps/api/src/users/users.service.ts
++++ b/apps/api/src/users/users.service.ts
+@@ -5,9 +5,8 @@ import {
+ } from '@nestjs/common';
+ import { Prisma, UserStatus } from '@prisma/client';
+ import { PrismaService } from '../prisma/prisma.service';
+-import { CreateUserDto } from './dto/create-user.dto';
+ 
+-const publicUserSelect = {
++export const publicUserSelect = {
+   id: true,
+   email: true,
+   status: true,
+@@ -20,12 +19,12 @@ const publicUserSelect = {
+ export class UsersService {
+   constructor(private readonly prisma: PrismaService) {}
+ 
+-  async create(dto: CreateUserDto) {
++  async createWithPasswordHash(email: string, passwordHash: string) {
+     try {
+       return await this.prisma.user.create({
+         data: {
+-          email: dto.email.trim().toLowerCase(),
+-          passwordHash: dto.passwordHash,
++          email: this.normalizeEmail(email),
++          passwordHash,
+         },
+         select: publicUserSelect,
+       });
+@@ -41,6 +40,18 @@ export class UsersService {
+     }
+   }
+ 
++  async findByEmailWithPasswordHash(email: string) {
++    return this.prisma.user.findUnique({
++      where: {
++        email: this.normalizeEmail(email),
++      },
++      select: {
++        ...publicUserSelect,
++        passwordHash: true,
++      },
++    });
++  }
++
+   async findAll() {
+     return this.prisma.user.findMany({
+       select: publicUserSelect,
+@@ -80,4 +91,8 @@ export class UsersService {
+       where: { id },
+     });
+   }
++
++  private normalizeEmail(email: string): string {
++    return email.trim().toLowerCase();
++  }
+ }

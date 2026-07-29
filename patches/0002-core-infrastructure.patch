@@ -1,0 +1,230 @@
+diff --git a/apps/api/src/common/constants/api.constants.ts b/apps/api/src/common/constants/api.constants.ts
+new file mode 100644
+index 0000000..bfb6ae9
+--- /dev/null
++++ b/apps/api/src/common/constants/api.constants.ts
+@@ -0,0 +1,2 @@
++export const API_DEFAULT_PORT = 3001;
++export const API_DEFAULT_WEB_ORIGIN = 'http://localhost:3000';
+diff --git a/apps/api/src/common/filters/http-exception.filter.ts b/apps/api/src/common/filters/http-exception.filter.ts
+new file mode 100644
+index 0000000..74290d1
+--- /dev/null
++++ b/apps/api/src/common/filters/http-exception.filter.ts
+@@ -0,0 +1,78 @@
++import {
++  ArgumentsHost,
++  Catch,
++  ExceptionFilter,
++  HttpException,
++  HttpStatus,
++  Logger,
++} from '@nestjs/common';
++import type { Request, Response } from 'express';
++import type { ApiErrorResponse } from '../types/api-response.type';
++
++interface NestErrorPayload {
++  message?: string | string[];
++  error?: string;
++  statusCode?: number;
++}
++
++@Catch()
++export class HttpExceptionFilter implements ExceptionFilter {
++  private readonly logger = new Logger(HttpExceptionFilter.name);
++
++  catch(exception: unknown, host: ArgumentsHost): void {
++    const http = host.switchToHttp();
++    const request = http.getRequest<Request>();
++    const response = http.getResponse<Response>();
++
++    const statusCode =
++      exception instanceof HttpException
++        ? exception.getStatus()
++        : HttpStatus.INTERNAL_SERVER_ERROR;
++
++    const payload = this.extractPayload(exception);
++
++    if (statusCode >= HttpStatus.INTERNAL_SERVER_ERROR) {
++      const stack = exception instanceof Error ? exception.stack : undefined;
++      this.logger.error(
++        `${request.method} ${request.originalUrl} failed`,
++        stack,
++      );
++    }
++
++    const body: ApiErrorResponse = {
++      success: false,
++      statusCode,
++      message: payload.message,
++      ...(payload.error ? { error: payload.error } : {}),
++      timestamp: new Date().toISOString(),
++      path: request.originalUrl,
++    };
++
++    response.status(statusCode).json(body);
++  }
++
++  private extractPayload(exception: unknown): {
++    message: string | string[];
++    error?: string;
++  } {
++    if (!(exception instanceof HttpException)) {
++      return {
++        message: 'Internal server error',
++        error: 'Internal Server Error',
++      };
++    }
++
++    const response = exception.getResponse();
++
++    if (typeof response === 'string') {
++      return { message: response };
++    }
++
++    const payload = response as NestErrorPayload;
++
++    return {
++      message: payload.message ?? exception.message,
++      ...(payload.error ? { error: payload.error } : {}),
++    };
++  }
++}
+diff --git a/apps/api/src/common/interceptors/logging.interceptor.ts b/apps/api/src/common/interceptors/logging.interceptor.ts
+new file mode 100644
+index 0000000..ea5a4e4
+--- /dev/null
++++ b/apps/api/src/common/interceptors/logging.interceptor.ts
+@@ -0,0 +1,30 @@
++import {
++  CallHandler,
++  ExecutionContext,
++  Injectable,
++  Logger,
++  NestInterceptor,
++} from '@nestjs/common';
++import type { Request, Response } from 'express';
++import { Observable } from 'rxjs';
++import { finalize } from 'rxjs/operators';
++
++@Injectable()
++export class LoggingInterceptor implements NestInterceptor {
++  private readonly logger = new Logger(LoggingInterceptor.name);
++
++  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
++    const request = context.switchToHttp().getRequest<Request>();
++    const response = context.switchToHttp().getResponse<Response>();
++    const startedAt = Date.now();
++
++    return next.handle().pipe(
++      finalize(() => {
++        const durationMs = Date.now() - startedAt;
++        this.logger.log(
++          `${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`,
++        );
++      }),
++    );
++  }
++}
+diff --git a/apps/api/src/common/interceptors/response-envelope.interceptor.ts b/apps/api/src/common/interceptors/response-envelope.interceptor.ts
+new file mode 100644
+index 0000000..623b53d
+--- /dev/null
++++ b/apps/api/src/common/interceptors/response-envelope.interceptor.ts
+@@ -0,0 +1,31 @@
++import {
++  CallHandler,
++  ExecutionContext,
++  Injectable,
++  NestInterceptor,
++} from '@nestjs/common';
++import type { Request } from 'express';
++import { Observable } from 'rxjs';
++import { map } from 'rxjs/operators';
++import type { ApiSuccessResponse } from '../types/api-response.type';
++
++@Injectable()
++export class ResponseEnvelopeInterceptor<T>
++  implements NestInterceptor<T, ApiSuccessResponse<T>>
++{
++  intercept(
++    context: ExecutionContext,
++    next: CallHandler<T>,
++  ): Observable<ApiSuccessResponse<T>> {
++    const request = context.switchToHttp().getRequest<Request>();
++
++    return next.handle().pipe(
++      map((data) => ({
++        success: true as const,
++        data,
++        timestamp: new Date().toISOString(),
++        path: request.originalUrl,
++      })),
++    );
++  }
++}
+diff --git a/apps/api/src/common/types/api-response.type.ts b/apps/api/src/common/types/api-response.type.ts
+new file mode 100644
+index 0000000..e141728
+--- /dev/null
++++ b/apps/api/src/common/types/api-response.type.ts
+@@ -0,0 +1,15 @@
++export interface ApiSuccessResponse<T> {
++  success: true;
++  data: T;
++  timestamp: string;
++  path: string;
++}
++
++export interface ApiErrorResponse {
++  success: false;
++  statusCode: number;
++  message: string | string[];
++  error?: string;
++  timestamp: string;
++  path: string;
++}
+diff --git a/apps/api/src/main.ts b/apps/api/src/main.ts
+index e396f09..6f76784 100644
+--- a/apps/api/src/main.ts
++++ b/apps/api/src/main.ts
+@@ -1,12 +1,36 @@
+ import { ValidationPipe } from '@nestjs/common';
+ import { NestFactory } from '@nestjs/core';
+ import { AppModule } from './app.module';
++import {
++  API_DEFAULT_PORT,
++  API_DEFAULT_WEB_ORIGIN,
++} from './common/constants/api.constants';
++import { HttpExceptionFilter } from './common/filters/http-exception.filter';
++import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
++import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
+ 
+ async function bootstrap(): Promise<void> {
+   const app = await NestFactory.create(AppModule);
+-  app.enableCors({ origin: process.env.WEB_URL ?? 'http://localhost:3000', credentials: true });
+-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+-  await app.listen(Number(process.env.API_PORT ?? 3001));
++
++  app.enableCors({
++    origin: process.env.WEB_URL ?? API_DEFAULT_WEB_ORIGIN,
++    credentials: true,
++  });
++
++  app.useGlobalFilters(new HttpExceptionFilter());
++  app.useGlobalInterceptors(
++    new LoggingInterceptor(),
++    new ResponseEnvelopeInterceptor(),
++  );
++  app.useGlobalPipes(
++    new ValidationPipe({
++      whitelist: true,
++      forbidNonWhitelisted: true,
++      transform: true,
++    }),
++  );
++
++  await app.listen(Number(process.env.API_PORT ?? API_DEFAULT_PORT));
+ }
+ 
+ void bootstrap();
