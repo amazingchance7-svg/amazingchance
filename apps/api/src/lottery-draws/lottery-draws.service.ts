@@ -11,6 +11,7 @@ import {
     Prisma,
   } from '@prisma/client';
   
+  import { PaginatedResult } from '../common/types/paginated-result.type';
   import { PrismaService } from '../prisma/prisma.service';
   import { CreateLotteryDrawDto } from './dto/create-lottery-draw.dto';
   import { ListLotteryDrawsDto } from './dto/list-lottery-draws.dto';
@@ -79,15 +80,9 @@ import {
       return this.serialize(draw);
     }
   
-    async findAll(query: ListLotteryDrawsDto): Promise<{
-      items: SerializedLotteryDraw[];
-      pagination: {
-        page: number;
-        limit: number;
-        total: number;
-        totalPages: number;
-      };
-    }> {
+    async findAll(
+      query: ListLotteryDrawsDto,
+    ): Promise<PaginatedResult<SerializedLotteryDraw>> {
       const page = query.page ?? 1;
       const limit = query.limit ?? 20;
       const skip = (page - 1) * limit;
@@ -321,7 +316,9 @@ import {
       sequenceNumber: number,
     ): string {
       const prefix = type === DrawType.WEEKLY ? 'W' : 'A';
-      const paddedSequence = sequenceNumber.toString().padStart(6, '0');
+      const paddedSequence = sequenceNumber
+        .toString()
+        .padStart(6, '0');
   
       return `${prefix}-${year}-${paddedSequence}`;
     }

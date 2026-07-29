@@ -1,27 +1,9 @@
-import { Type } from 'class-transformer';
 import { DrawStatus, DrawType } from '@prisma/client';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsOptional } from 'class-validator';
 
-export class ListLotteryDrawsDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  page = 1;
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  @IsOptional()
-  limit = 20;
-
+export class ListLotteryDrawsDto extends PaginationQueryDto {
   @IsEnum(DrawType)
   @IsOptional()
   type?: DrawType;

@@ -6,13 +6,16 @@ import {
   } from '@nestjs/common';
   import {
     DrawStatus,
-    Prisma,
     Purchase,
     PurchaseStatus,
     UserStatus,
   } from '@prisma/client';
-  import { randomUUID } from 'node:crypto';
   
+  import {
+    createCorrelationId,
+    createIdempotencyKey,
+    createPublicId,
+  } from '../common/utils/identifier.util';
   import { PrismaService } from '../prisma/prisma.service';
   import { CreatePurchaseDto } from './dto/create-purchase.dto';
   
@@ -72,7 +75,7 @@ import {
       const purchase = await this.prisma.$transaction(async (tx) => {
         const createdPurchase = await tx.purchase.create({
           data: {
-            publicId: this.createPublicId(),
+            publicId: createPublicId('PUR'),
             userId,
             drawId: draw.id,
             status: PurchaseStatus.CREATED,
@@ -80,7 +83,7 @@ import {
             ticketPriceMinor: draw.ticketPriceMinor,
             totalAmountMinor,
             currency: draw.currency,
-            idempotencyKey: randomUUID(),
+            idempotencyKey: createIdempotencyKey(),
             expiresAt: new Date(Date.now() + 30 * 60 * 1000),
           },
         });
@@ -92,7 +95,7 @@ import {
             toStatus: PurchaseStatus.CREATED,
             cause: 'PURCHASE_CREATED',
             source: 'USER',
-            correlationId: randomUUID(),
+            correlationId: createCorrelationId(),
             metadata: {
               requestedTicketCount: dto.requestedTicketCount,
               drawPublicId: draw.publicId,
@@ -179,7 +182,7 @@ import {
               toStatus: PurchaseStatus.CANCELLED,
               cause: 'CANCELLED_BY_USER',
               source: 'USER',
-              correlationId: randomUUID(),
+              correlationId: createCorrelationId(),
             },
           });
   
@@ -221,10 +224,6 @@ import {
           'The scheduled draw time has already passed',
         );
       }
-    }
-  
-    private createPublicId(): string {
-      return `PUR-${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
     }
   
     private serialize(purchase: Purchase): SerializedPurchase {
