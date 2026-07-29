@@ -1,11 +1,31 @@
-import { Controller, Get } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+} from '@nestjs/common';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+
 import { PrismaService } from '../prisma/prisma.service';
 
+@ApiTags('Health')
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
+  @ApiOperation({
+    summary: 'Health check',
+    description:
+      'Returns the current API status and verifies database connectivity.',
+  })
+  @ApiOkResponse({
+    description: 'Service is healthy.',
+  })
   async getHealth(): Promise<{
     status: 'ok';
     service: string;
