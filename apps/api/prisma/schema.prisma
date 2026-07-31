@@ -210,6 +210,8 @@ model LotteryDraw {
 
   purchases         Purchase[]
   tickets           Ticket[]
+  ticketAllocations TicketAllocation[]
+  ticketSequence    TicketSequence?
   snapshot          TicketSnapshot?
   randomnessRecords RandomnessEvidence[]
   winners           DrawWinner[]
@@ -255,11 +257,12 @@ model Purchase {
   createdAt            DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt            DateTime       @updatedAt @db.Timestamptz(3)
 
-  user        User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
-  draw        LotteryDraw          @relation(fields: [drawId], references: [id], onDelete: Restrict)
-  payments    Payment[]
-  tickets     Ticket[]
-  stateEvents PurchaseStateEvent[]
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  draw             LotteryDraw          @relation(fields: [drawId], references: [id], onDelete: Restrict)
+  payments         Payment[]
+  tickets          Ticket[]
+  ticketAllocation TicketAllocation?
+  stateEvents      PurchaseStateEvent[]
 
   @@index([userId, createdAt])
   @@index([drawId, status])
@@ -350,6 +353,33 @@ model WebhookEvent {
   @@index([status, receivedAt])
   @@index([paymentId])
   @@map("webhook_events")
+}
+
+model TicketSequence {
+  drawId     String   @id @db.Uuid
+  nextNumber BigInt   @default(1)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  draw LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_sequences")
+}
+
+model TicketAllocation {
+  id            String   @id @default(uuid()) @db.Uuid
+  purchaseId    String   @unique @db.Uuid
+  drawId        String   @db.Uuid
+  startNumber   BigInt
+  endNumber     BigInt
+  correlationId String
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  purchase Purchase    @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  draw     LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Restrict)
+
+  @@index([drawId, createdAt])
+  @@index([correlationId])
+  @@map("ticket_allocations")
 }
 
 model Ticket {
