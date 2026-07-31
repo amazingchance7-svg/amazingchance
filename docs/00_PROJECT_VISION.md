@@ -197,6 +197,52 @@ Business logic lives in application services.
 
 ---
 
+---
+
+# 4.1 What Never Changes
+
+These principles define the identity of Amazing Chance.
+
+They must not change unless the entire product vision changes.
+
+- Transparent draws
+- Public verification
+- Equal chances for every valid ticket
+- Fixed prize distribution
+- Public draw archive
+- Independent randomness
+- Honest communication
+
+---
+
+# 4.2 What Can Change
+
+The following may evolve over time without changing the identity of the platform:
+
+- User Interface
+- Branding
+- Features
+- Technologies
+- Payment providers
+- Infrastructure
+- Marketing
+
+---
+
+# 4.3 Product Decision Rule
+
+Every significant product decision should answer **YES** to all of the following questions:
+
+1. Does it increase user trust?
+2. Does it improve the user experience?
+3. Does it keep the platform simple?
+4. Can the result be independently verified?
+5. Can it scale without major redesign?
+
+If the answer to any question is **No**, the decision must be reconsidered or documented through an ADR.
+
+---
+
 # 5. Non-Goals
 
 Amazing Chance is not intended to become:
