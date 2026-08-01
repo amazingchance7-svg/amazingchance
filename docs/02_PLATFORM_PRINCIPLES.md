@@ -1,1217 +1,551 @@
-﻿# AmazingChance Architecture Principles
+# Amazing Chance — Platform Principles
 
+**Version:** 2.0  
+**Status:** Active  
+**Scope:** Product integrity, financial integrity, lottery integrity, administrative limits, privacy, and public verifiability  
+**Authority:** Mandatory unless superseded by an approved ADR
 
+---
 
 ## 1. Purpose
 
+This document defines the platform-level invariants that every Amazing Chance feature and implementation must preserve.
 
+It does not replace:
 
-AmazingChance must operate as an automated, transparent, auditable, and verifiable lottery platform.
+- `docs/01-PRODUCT.md` for the approved product model;
+- `docs/05_Business_Rules.md` for state machines and business rules;
+- `docs/00_System_Architecture.md` for system architecture;
+- `docs/STANDARDS.md` for engineering implementation standards;
+- `docs/audits/REMEDIATION_PLAN.md` for corrective work and execution order.
 
+This document contains only the non-negotiable principles that describe what the platform must never violate.
 
+---
 
-The platform must not require users to trust administrators, developers, or the platform owner when verifying ticket issuance, payments, draw participation, or draw results.
+## 2. Approved MVP Model
 
+Amazing Chance uses direct payment for each ticket purchase.
 
+The MVP does not include:
 
-Critical financial and lottery processes must be executed automatically and must not depend on manual human decisions.
+- a customer wallet;
+- stored customer balances;
+- customer deposits for future purchases;
+- internal transfers between users;
+- virtual credits;
+- internal ticket resale.
 
+Each payment is linked to one specific purchase for one specific draw.
 
+The approved allocation of confirmed eligible ticket revenue is:
 
-\---
+- 70% — Weekly Prize Pool;
+- 20% — Company Revenue;
+- 10% — Annual Prize Fund.
 
+The approved weekly prize distribution is:
 
+- 1st place — 50%;
+- 2nd place — 30%;
+- 3rd place — 20%.
 
-## 2. Automation First
+Only successfully paid and eligible tickets may participate in a draw.
 
+---
 
+## 3. Integrity Over Availability
 
-All critical platform processes must operate automatically.
+Platform integrity has priority over availability, convenience, speed, and manual intervention.
 
+If the platform cannot safely determine whether a critical operation is valid, it must reject, pause, or place that operation into controlled review.
 
+The platform must not continue a financial, ticket, draw, winner, or payout operation when its correctness cannot be established.
 
-This includes:
+A temporary interruption is preferable to an irreversible or unverifiable result.
 
+---
 
+## 4. No Manual Critical Outcomes
 
-\- purchase creation;
+No administrator, developer, employee, owner, support agent, or privileged user may manually create or alter a critical platform outcome.
 
-\- payment processing;
+Manual control must not permit a person to:
 
-\- payment confirmation;
+- mark an unpaid purchase as paid;
+- issue confirmed tickets;
+- change ticket ownership or ticket numbers;
+- add tickets after draw finalization;
+- modify confirmed financial records;
+- edit ledger history;
+- change accepted randomness evidence;
+- select or replace winners;
+- modify a completed prize amount;
+- modify published draw results;
+- delete immutable audit evidence.
 
-\- ticket issuance;
+Administrative tools may support observation, approval workflows, investigation, legally required review, and explicitly controlled recovery operations.
 
-\- ticket cancellation after refunds;
+They must not bypass platform invariants.
 
-\- draw sales opening;
+---
 
-\- draw sales closing;
+## 5. Payment Before Ticket Issuance
 
-\- draw snapshot creation;
+Tickets may be issued only after authenticated and verified payment confirmation.
 
-\- randomness acquisition;
+A browser redirect, client-side response, administrator action, or unverified provider message is not payment confirmation.
 
-\- winner selection;
+Before ticket issuance, the platform must validate the applicable provider evidence, including:
 
-\- prize calculation;
+- provider authenticity;
+- purchase reference;
+- merchant or account reference;
+- exact amount;
+- currency;
+- event identity;
+- replay status.
 
-\- result publication;
+A failed, expired, cancelled, duplicated, unresolved, or unverifiable payment must not create eligible tickets.
 
-\- payout processing;
+---
 
-\- audit event creation.
+## 6. Exact and Idempotent Ticket Issuance
 
+One confirmed purchase must produce exactly the number of tickets paid for.
 
+The platform must guarantee:
 
-Manual execution must not be the normal operating mode.
+- one purchase receives at most one ticket allocation;
+- ticket identifiers are unique;
+- ticket numbers do not overlap within a draw;
+- retries do not create duplicate tickets;
+- partial ticket issuance is rolled back;
+- every issued ticket is traceable to one purchase, one user, and one draw;
+- issuance and purchase completion are completed atomically.
 
+Ticket supply must not be described as finite unless a future approved product rule explicitly introduces a finite limit.
 
+Regulatory, responsible-participation, fraud, provider, or technical limits may still restrict purchases.
 
-Administrative interfaces may display statuses, errors, and diagnostics, but must not allow administrators to manually alter critical business results.
+---
 
+## 7. Immutable Financial History
 
+Confirmed financial history must not be overwritten or silently deleted.
 
-\---
+This includes, where applicable:
 
+- confirmed payments;
+- allocation records;
+- ledger transactions;
+- ledger postings;
+- refunds;
+- chargebacks;
+- prize obligations;
+- payouts;
+- reconciliation records.
 
+Corrections must use new compensating records.
 
-## 3. No Manual Ticket Issuance
+The MVP has no customer wallet, but the platform may maintain internal ledger accounts and calculated financial positions for:
 
+- Weekly Prize Pool;
+- Company Revenue;
+- Annual Prize Fund;
+- refunds;
+- prize obligations;
+- payouts;
+- provider reconciliation.
 
+Internal ledger accounts must not be exposed or represented as customer deposit balances.
 
-Tickets may only be created after successful payment confirmation.
+---
 
+## 8. Double-Entry and Deterministic Allocation
 
+Every financial event that affects platform funds must be recorded through controlled, auditable accounting.
 
-A ticket must not be created:
+Ledger transactions must be:
 
+- balanced;
+- append-only;
+- idempotent;
+- currency-consistent;
+- linked to the originating business event.
 
+The approved 70% / 20% / 10% allocation must be applied deterministically to eligible confirmed revenue according to a versioned allocation rule.
 
-\- by an administrator;
+Historical allocation records must retain the exact rule version used.
 
-\- by the platform owner;
+---
 
-\- through a management dashboard;
+## 9. Immutable Ticket and Draw Evidence
 
-\- through a direct public API request;
+After a ticket is issued, its core identity must remain immutable.
 
-\- before payment confirmation;
+Core ticket identity includes:
 
-\- through manual database operations during normal platform operation.
+- public ticket identifier;
+- purchase;
+- user;
+- draw;
+- sequential number;
+- issuance timestamp.
 
+Status changes may affect eligibility, but they must not erase historical issuance.
 
+After ticket sales close, the platform must create a deterministic eligible-ticket snapshot.
 
-The valid ticket issuance flow is:
+After finalization:
 
+- the snapshot is immutable;
+- snapshot entries are immutable;
+- no ticket may be added;
+- no ticket may appear more than once;
+- the canonical format is versioned;
+- the hash algorithm is versioned;
+- the published snapshot hash must remain permanent.
 
+---
 
-```text
+## 10. Verified External Randomness
 
-Purchase created
+The approved randomness provider for the MVP is RANDOM.ORG.
 
-&#x20;   в†“
+The platform must store sufficient evidence to verify the accepted randomness result, including applicable:
 
-Payment created
+- request data;
+- response data;
+- provider signature;
+- signature-verification result;
+- requested range;
+- requested count;
+- returned positions or values;
+- timestamps;
+- normalization method;
+- evidence hash;
+- provider and algorithm versions.
 
-&#x20;   в†“
+The platform must not silently replace RANDOM.ORG with another provider during a draw.
 
-Payment confirmed
+Any fallback model requires a separate approved product, legal, security, and architectural decision.
 
-&#x20;   в†“
+---
 
-Purchase marked as PAYMENT\_CONFIRMED
+## 11. Deterministic Winner Selection
 
-&#x20;   в†“
+Winner selection must use only approved immutable inputs.
 
-Ticket allocation started
+The required inputs are:
 
-&#x20;   в†“
+- the finalized eligible-ticket snapshot;
+- the accepted verified randomness evidence;
+- the versioned deterministic winner-selection algorithm.
 
-Tickets created as ACTIVE
+The same inputs and algorithm version must always produce the same winners.
 
-&#x20;   в†“
+The platform must reject:
 
-Purchase marked as COMPLETED
+- out-of-range positions;
+- incorrect winner counts;
+- malformed randomness evidence;
+- duplicate positions where uniqueness is required;
+- any attempt to supply winners manually.
 
-The number of issued tickets must exactly match the number of tickets paid for.
+Winner records must be immutable after draw completion.
 
+---
 
+## 12. Public Verifiability Without Personal Exposure
 
-Each ticket must be linked to:
+Amazing Chance must preserve enough evidence for an independent party to verify a completed draw.
 
+Public verification should support confirmation of:
 
+- draw identity;
+- sales closure;
+- finalized ticket count;
+- snapshot hash;
+- randomness evidence;
+- normalized positions;
+- algorithm version;
+- winning public ticket identifiers;
+- prize distribution;
+- publication time.
 
-one user;
+Public verification must not require exposing:
 
-one purchase;
+- legal names;
+- email addresses;
+- phone numbers;
+- home addresses;
+- payment information;
+- identity documents;
+- private internal identifiers;
+- precise location data.
 
-one lottery draw;
+Public winner identity fields, public nicknames, country display, or public activity maps are not platform invariants and require separate approved product and privacy decisions.
 
-one unique public ticket identifier;
+---
 
-one unique sequential number within the draw.
+## 13. Explicit State Machines
 
-4\. Unlimited Ticket Supply
+Critical entities must change state only through explicit, validated transitions.
 
+This applies to:
 
+- users;
+- purchases;
+- payments;
+- tickets;
+- draws;
+- snapshots;
+- prizes;
+- payouts.
 
-AmazingChance does not impose a platform-level limit on the number of tickets that may be purchased or issued.
+State transitions must be:
 
+- authorized;
+- deterministic;
+- atomic where required;
+- idempotent;
+- concurrency-safe;
+- auditable.
 
+Direct arbitrary status updates are prohibited.
 
-The platform must not artificially limit:
+The authoritative transition rules are defined in `docs/05_Business_Rules.md`.
 
+---
 
+## 14. Idempotency and Safe Retries
 
-the number of tickets in a draw;
+Every externally triggered critical operation must support safe retries.
 
-the size of the jackpot;
+This includes, where applicable:
 
-the total payment amount;
+- purchase creation;
+- payment-session creation;
+- webhook processing;
+- payment confirmation;
+- ticket allocation;
+- refund processing;
+- snapshot finalization;
+- randomness acquisition;
+- winner selection;
+- prize creation;
+- payout processing.
 
-the number of purchases by a user.
+Repeating the same valid request must not create duplicate business results.
 
+Duplicate requests and provider events must remain traceable in audit history.
 
+---
 
-External limitations may exist because of:
+## 15. Atomic Critical Workflows
 
+Operations that must succeed together must execute inside one controlled transaction boundary.
 
+A confirmed-payment workflow may include:
 
-payment provider limits;
+- claiming the provider event;
+- validating the purchase;
+- recording the payment;
+- transitioning purchase state;
+- applying the allocation rule;
+- creating ledger entries;
+- reserving the ticket range;
+- creating tickets;
+- recording state events;
+- recording audit events;
+- recording outbox events;
+- completing the purchase.
 
-card issuer limits;
+Either the complete transaction succeeds or none of its state changes are committed.
 
-bank limits;
+External network calls must not remain open inside long-running database transactions.
 
-anti-fraud controls;
+---
 
-regulatory requirements;
+## 16. Least Privilege and Deny by Default
 
-sanctions or jurisdiction restrictions;
+All access is deny-by-default.
 
-technical infrastructure limits.
+Users, administrators, workers, services, and integrations receive only the permissions required for their responsibilities.
 
+Authentication alone does not authorize privileged operations.
 
+Administrative permissions must be explicit and auditable.
 
-Such limitations must not be presented as lottery ticket availability limits.
+Sensitive production access should require:
 
+- strong authentication;
+- multi-factor authentication;
+- time-limited authorization where appropriate;
+- explicit reason recording;
+- full audit logging;
+- separation of duties for high-risk operations where practical.
 
+No unrestricted “god mode” may alter financial or lottery outcomes.
 
-Tickets cannot be sold out because ticket numbers are generated sequentially and the ticket supply is not finite.
+---
 
+## 17. Immutable Audit History
 
+Every material financial, ticket, draw, winner, security, and administrative action must create an audit record.
 
-5\. No Manual Winners
+Audit records must identify, where applicable:
 
+- actor or service;
+- target;
+- action;
+- previous state;
+- new state;
+- reason;
+- timestamp;
+- correlation identifier;
+- result;
+- relevant version information.
 
+Audit records must be append-only and access-controlled.
 
-No administrator, developer, employee, owner, or privileged user may select, replace, exclude, or modify a winner.
+They must not be editable through normal administration tools.
 
+---
 
+## 18. Privacy by Design
 
-Winners must be determined exclusively through the published draw algorithm.
+The platform must minimize the collection, exposure, and retention of personal data.
 
+Private and public representations must remain separated.
 
+Personal data may be processed only for an approved legal, operational, security, payment, identity, or payout purpose.
 
-The winner-selection process must use:
+Jurisdiction-dependent requirements such as:
 
+- KYC;
+- age verification;
+- sanctions screening;
+- responsible-participation controls;
+- retention periods;
+- public winner information;
+- tax records
 
+must not be treated as finalized until formally approved.
 
-a finalized immutable ticket snapshot;
+---
 
-a published snapshot hash;
+## 19. Single Source of Truth
 
-externally obtained verifiable randomness;
+PostgreSQL is the authoritative source for critical business state.
 
-a deterministic winner-selection algorithm;
+Redis, caches, queues, logs, analytics, or external provider dashboards must not become an alternative source of truth for:
 
-immutable winner records.
+- payments;
+- purchases;
+- tickets;
+- draws;
+- snapshots;
+- randomness evidence;
+- winners;
+- prizes;
+- payouts;
+- ledger history;
+- audit history.
 
+Each business entity has one authoritative owning module.
 
+Modules must not directly mutate another module’s lifecycle state outside approved application commands.
 
-The same snapshot, randomness evidence, and algorithm must always produce the same winners.
+---
 
-
-
-6\. Least Privilege
-
-
-
-Every system component and user role must receive only the permissions required for its assigned responsibility.
-
-
-
-Regular user
-
-
-
-A regular user may:
-
-
-
-create purchases;
-
-make payments;
-
-view personal purchases;
-
-view personal tickets;
-
-view completed draws;
-
-view winning ticket identifiers;
-
-view winner nicknames and countries;
-
-verify personal ticket participation;
-
-download public draw evidence;
-
-verify draw results;
-
-claim eligible prizes.
-
-
-
-A regular user may not:
-
-
-
-create tickets directly;
-
-modify ticket numbers;
-
-modify payments;
-
-change draw data;
-
-create winners;
-
-modify prizes;
-
-modify another user's information.
-
-Administrator
-
-
-
-An administrator may:
-
-
-
-view operational statistics;
-
-view payment statuses;
-
-view failed processes;
-
-view system logs;
-
-review fraud alerts;
-
-manage public content;
-
-manage support requests;
-
-retry approved non-critical delivery operations;
-
-trigger safe technical recovery procedures where explicitly permitted.
-
-
-
-An administrator may not:
-
-
-
-issue tickets;
-
-delete tickets;
-
-change ticket ownership;
-
-change ticket numbers;
-
-change confirmed payment amounts;
-
-mark payments as successful manually;
-
-select winners;
-
-modify random positions;
-
-replace randomness evidence;
-
-modify finalized snapshots;
-
-modify completed draw results;
-
-manually change jackpot calculations;
-
-manually create prizes.
-
-7\. No Unrestricted God Mode
-
-
-
-AmazingChance must not provide an unrestricted God Mode capable of changing financial or lottery results.
-
-
-
-Emergency access, if implemented, must be limited to technical recovery operations and must not allow the user to:
-
-
-
-issue tickets;
-
-select winners;
-
-change payment amounts;
-
-mark unpaid purchases as paid;
-
-modify completed draws;
-
-replace randomness evidence;
-
-alter snapshot contents;
-
-change winning tickets;
-
-delete audit history.
-
-
-
-Emergency access must require:
-
-
-
-strong multi-factor authentication;
-
-hardware-backed authentication where possible;
-
-explicit reason entry;
-
-time-limited authorization;
-
-complete audit logging;
-
-notification to the platform owner;
-
-approval by more than one independent credential where technically possible.
-
-
-
-Emergency access must be disabled by default.
-
-
-
-8\. Immutable Financial History
-
-
-
-Confirmed financial records must not be overwritten.
-
-
-
-After payment confirmation, the following purchase data must not be modified:
-
-
-
-user;
-
-draw;
-
-ticket quantity;
-
-ticket price;
-
-total amount;
-
-currency;
-
-payment confirmation time.
-
-
-
-Corrections must be represented through new records or state transitions.
-
-
-
-Examples:
-
-
-
-refunds are separate refund operations;
-
-chargebacks are separate payment events;
-
-ticket invalidation is represented by a status change;
-
-failed payout attempts are recorded separately;
-
-payment provider corrections are recorded as new events.
-
-
-
-Historical financial records must remain available for auditing.
-
-
-
-9\. Immutable Ticket History
-
-
-
-An issued ticket must never be physically deleted during normal platform operation.
-
-
-
-After issuance, the following fields must remain immutable:
-
-
-
-public ticket identifier;
-
-user;
-
-purchase;
-
-draw;
-
-sequential number within the draw;
-
-issuance timestamp.
-
-
-
-A refunded ticket must be marked as:
-
-
-
-VOIDED\_BY\_REFUND
-
-
-
-The original ticket record must remain in the database.
-
-
-
-A voided ticket must not participate in a future draw snapshot unless the applicable published rules explicitly provide otherwise.
-
-
-
-10\. Draw Snapshot
-
-
-
-After ticket sales close, the platform must create a deterministic snapshot containing all eligible tickets.
-
-
-
-The snapshot must contain, at minimum:
-
-
-
-snapshot position;
-
-public ticket identifier;
-
-privacy-safe owner reference.
-
-
-
-The snapshot must not contain:
-
-
-
-real name;
-
-email address;
-
-phone number;
-
-payment information;
-
-internal user identifier;
-
-IP address;
-
-precise geographic location.
-
-
-
-The snapshot must use a published canonical format.
-
-
-
-The platform must calculate and publish a cryptographic hash of the snapshot.
-
-
-
-The default hash algorithm is:
-
-
-
-SHA-256
-
-
-
-After finalization, the snapshot and its entries must be immutable.
-
-
-
-11\. Verifiable Randomness
-
-
-
-Randomness used to select winners must come from an external verifiable randomness provider.
-
-
-
-The initial supported provider is:
-
-
-
-RANDOM.ORG
-
-
-
-The platform must store:
-
-
-
-randomness request;
-
-randomness response;
-
-request parameters;
-
-response hash;
-
-provider signature;
-
-signature verification result;
-
-requested range;
-
-requested winner count;
-
-returned random positions;
-
-request timestamp;
-
-response timestamp;
-
-verification timestamp.
-
-
-
-The randomness evidence must be publicly verifiable after the draw is completed.
-
-
-
-12\. Deterministic Winner Selection
-
-
-
-Winner selection must be deterministic.
-
-
-
-The inputs are:
-
-
-
-finalized ticket snapshot;
-
-finalized snapshot hash;
-
-verified random positions;
-
-published winner-selection algorithm.
-
-
-
-The platform must map each random position to the ticket stored at that snapshot position.
-
-
-
-The same inputs must always result in the same winners.
-
-
-
-The winner-selection algorithm must be versioned.
-
-
-
-The algorithm version used for each draw must be permanently recorded.
-
-
-
-13\. Public Draw Verification
-
-
-
-Every completed draw must expose a public verification page.
-
-
-
-The page must show:
-
-
-
-draw public identifier;
-
-draw type;
-
-sales opening time;
-
-sales closing time;
-
-draw completion time;
-
-number of eligible tickets;
-
-jackpot amount;
-
-prize distribution;
-
-snapshot hash;
-
-snapshot canonical format;
-
-hash algorithm;
-
-randomness provider;
-
-randomness evidence;
-
-random positions;
-
-winning ticket identifiers;
-
-winner nicknames;
-
-winner countries;
-
-winner ranks;
-
-prize amounts;
-
-winner-selection algorithm version.
-
-
-
-Users must be able to:
-
-
-
-Download the snapshot.
-
-Calculate its hash independently.
-
-Compare the calculated hash with the published hash.
-
-verify the RANDOM.ORG response and signature.
-
-inspect the random positions.
-
-locate tickets at those positions.
-
-confirm that the published winners match the deterministic result.
-
-14\. Personal Ticket Participation Verification
-
-
-
-An authenticated user must be able to verify whether each personal ticket participated in a completed draw.
-
-
-
-For every personal ticket, the platform must show:
-
-
-
-ticket public identifier;
-
-draw public identifier;
-
-ticket status;
-
-snapshot participation status;
-
-snapshot position, when included;
-
-snapshot hash;
-
-draw result;
-
-winner status;
-
-winner rank, when applicable;
-
-prize amount, when applicable.
-
-
-
-Participation must be proven using the finalized snapshot entry.
-
-
-
-The platform must not infer participation only from the current ticket status.
-
-
-
-15\. Public Winner Identity
-
-
-
-AmazingChance may publicly display:
-
-
-
-winner nickname;
-
-winner country;
-
-public winning ticket identifier;
-
-winner rank;
-
-prize amount.
-
-
-
-AmazingChance must not publicly display without separate explicit consent:
-
-
-
-legal name;
-
-email address;
-
-phone number;
-
-home address;
-
-precise location;
-
-payment information;
-
-identity documents;
-
-internal user identifier.
-
-
-
-Users must choose a public nickname.
-
-
-
-The platform must validate nicknames to prevent:
-
-
-
-impersonation;
-
-offensive content;
-
-personal information disclosure;
-
-misleading official platform names.
-
-
-
-The winner country may be derived from the user's verified profile information.
-
-
-
-The country displayed for a completed draw must be stored as a historical snapshot so that later profile changes do not alter past draw results.
-
-
-
-16\. Global Purchase Activity Map
-
-
-
-AmazingChance may display an aggregated public map showing countries from which tickets are being purchased.
-
-
-
-The map may show:
-
-
-
-highlighted countries;
-
-approximate purchase activity;
-
-recent purchase events;
-
-aggregated ticket counts;
-
-aggregated purchase counts.
-
-
-
-The map must not expose:
-
-
-
-exact user coordinates;
-
-exact addresses;
-
-precise IP locations;
-
-private user identifiers;
-
-payment information;
-
-an individual user's location without consent.
-
-
-
-A public map event may contain:
-
-
-
-country code;
-
-country name;
-
-approximate display coordinate;
-
-event timestamp;
-
-anonymized activity type;
-
-ticket quantity range.
-
-
-
-The public coordinate must represent the country or a randomized point within a broad geographic area. It must not represent the buyer's exact location.
-
-
-
-The map must not reveal enough information to identify an individual buyer.
-
-
-
-17\. Privacy by Design
-
-
-
-Privacy protections must be implemented as part of the architecture, not added later.
-
-
-
-The platform must apply:
-
-
-
-data minimization;
-
-pseudonymous public identifiers;
-
-separation of public and private user data;
-
-encryption in transit;
-
-encryption of sensitive data at rest where appropriate;
-
-restricted access to personal data;
-
-retention policies;
-
-audit logging;
-
-secure deletion where legally and technically permitted.
-
-
-
-Public lottery verification must not require disclosure of personal information.
-
-
-
-18\. Everything Audited
-
-
-
-Every critical state transition must create an immutable audit event.
-
-
-
-Audit events must include, where applicable:
-
-
-
-entity identifier;
-
-previous state;
-
-new state;
-
-cause;
-
-source;
-
-correlation identifier;
-
-timestamp;
-
-relevant metadata.
-
-
-
-Critical operations include:
-
-
-
-purchase creation;
-
-payment creation;
-
-payment confirmation;
-
-payment failure;
-
-refund initiation;
-
-refund completion;
-
-ticket issuance;
-
-ticket invalidation;
-
-snapshot creation;
-
-snapshot finalization;
-
-randomness request;
-
-randomness verification;
-
-winner creation;
-
-prize creation;
-
-payout initiation;
-
-payout completion;
-
-emergency recovery action.
-
-
-
-Audit logs must not be editable through the administrative interface.
-
-
-
-19\. Idempotency
-
-
-
-All critical externally triggered operations must be idempotent.
-
-
-
-This includes:
-
-
-
-purchase creation;
-
-payment session creation;
-
-payment webhook processing;
-
-payment confirmation;
-
-ticket allocation;
-
-refund processing;
-
-snapshot creation;
-
-randomness requests;
-
-winner selection;
-
-prize creation;
-
-payout processing.
-
-
-
-Repeating the same valid request must not create duplicate:
-
-
-
-purchases;
-
-payments;
-
-tickets;
-
-webhook records;
-
-winners;
-
-prizes;
-
-payouts.
-
-20\. Transactional Consistency
-
-
-
-Operations that change multiple related records must use database transactions.
-
-
-
-Ticket allocation must atomically:
-
-
-
-verify purchase eligibility;
-
-verify payment confirmation;
-
-verify that tickets have not already been allocated;
-
-assign unique sequential ticket numbers;
-
-create the exact number of tickets;
-
-create audit events;
-
-mark the purchase as completed.
-
-
-
-Either all steps succeed or none of them are committed.
-
-
-
-21\. Security Boundaries
-
-
-
-The public API, administrative API, payment webhooks, internal workers, and draw-processing services must have separate permission boundaries.
-
-
-
-Payment webhooks must:
-
-
-
-verify provider signatures;
-
-reject invalid requests;
-
-prevent duplicate processing;
-
-store original evidence;
-
-process events idempotently.
-
-
-
-Draw workers must not accept arbitrary winner or ticket inputs from administrators.
-
-
-
-Database access must use dedicated service credentials with minimum required permissions where technically practical.
-
-
-
-22\. Failure Handling
-
-
-
-The platform must fail safely.
-
-
+## 20. Failure Safety and Recovery
 
 A technical failure must not result in:
 
+- unpaid eligible tickets;
+- duplicate tickets;
+- overlapping ticket numbers;
+- partial financial allocation;
+- unbalanced ledger transactions;
+- partial snapshots;
+- unverifiable randomness acceptance;
+- duplicate winners;
+- duplicate prizes;
+- duplicate payouts;
+- missing audit evidence.
 
+Failed operations must remain observable, auditable, and safely retryable.
 
-duplicate tickets;
+Recovery must resume from the last committed state without repeating completed critical operations.
 
-unpaid tickets;
+---
 
-missing confirmed payments;
+## 21. Versioned Critical Rules
 
-duplicated winners;
+Critical rules and evidence formats must be versioned.
 
-partial snapshot creation;
+This includes:
 
-unverified randomness acceptance;
+- allocation rules;
+- ticket-snapshot format;
+- snapshot hash algorithm;
+- randomness normalization;
+- winner-selection algorithm;
+- public verification format;
+- APIs where applicable;
+- database migrations.
 
-duplicated payouts.
+A completed historical operation must retain the exact versions used at execution time.
 
+---
 
+## 22. Open Decisions Must Remain Open
 
-Failed automatic operations must remain retryable and auditable.
+An unresolved product, legal, financial, privacy, or operational decision must not be documented as implemented or approved.
 
+The following remain subject to separate approval unless another authoritative document records a final decision:
 
+- operating jurisdiction;
+- licensing model;
+- payment provider;
+- refund policy;
+- KYC and age-verification rules;
+- responsible-participation limits;
+- prize claim window;
+- payout process;
+- tax handling;
+- annual draw rules;
+- public winner identity;
+- public geographic activity display;
+- fallback randomness model.
 
-Retries must preserve idempotency.
+Implementation must not silently decide these matters.
 
+---
 
+## 23. Architecture Decision Rule
 
-23\. Public Trust
+A feature or implementation that conflicts with these principles must not proceed until:
 
+1. the conflict is identified;
+2. product, legal, financial, security, and operational impacts are reviewed where applicable;
+3. an ADR records the approved exception or change;
+4. affected authoritative documentation is updated;
+5. tests prove the revised invariant.
 
+Convenience, speed, or administrative power must never silently override platform integrity.
 
-AmazingChance must provide enough public evidence for an independent person to verify:
+---
 
+## 24. Related Documentation
 
-
-that a ticket was issued only after payment;
-
-that the ticket participated in the applicable draw;
-
-that the eligible ticket list was not altered after finalization;
-
-that randomness came from the published provider;
-
-that the randomness evidence is authentic;
-
-that winning positions were calculated correctly;
-
-that the published winners match the algorithm.
-
-
-
-The platform's integrity must be based on verifiable evidence rather than statements of trust.
-
-
-
-24\. Architecture Decision Rule
-
-
-
-Any future feature that conflicts with these principles must not be implemented until the architecture and security consequences have been explicitly reviewed.
-
-
-
-Convenience for administrators must never override:
-
-
-
-draw integrity;
-
-payment integrity;
-
-ticket integrity;
-
-auditability;
-
-user privacy;
-
-public verifiability.
-
-
+- `docs/01-PRODUCT.md`
+- `docs/03_Product_Map.md`
+- `docs/05_Business_Rules.md`
+- `docs/00_System_Architecture.md`
+- `docs/01_ENGINEERING_PRINCIPLES.md`
+- `docs/STANDARDS.md`
+- `docs/audits/REMEDIATION_PLAN.md`
+- `docs/ADR/`
