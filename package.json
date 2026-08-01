@@ -1,14 +1,21 @@
 {
-  "name": "amazing-chance",
-  "private": true,
-  "packageManager": "pnpm@10.15.0",
-  "scripts": {
-    "dev": "pnpm --parallel --filter @amazing-chance/web --filter @amazing-chance/api dev",
-    "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
-    "db:generate": "pnpm --filter @amazing-chance/api prisma:generate",
-    "db:migrate": "pnpm --filter @amazing-chance/api prisma:migrate",
-    "db:studio": "pnpm --filter @amazing-chance/api prisma:studio"
-  }
+    "name":  "amazing-chance",
+    "private":  true,
+    "packageManager":  "pnpm@10.15.0",
+    "scripts":  {
+                    "dev":  "pnpm --parallel --filter @amazing-chance/web --filter @amazing-chance/api dev",
+                    "build":  "pnpm -r build",
+                    "lint":  "pnpm -r lint",
+                    "typecheck":  "pnpm -r typecheck",
+                    "db:generate":  "pnpm --filter @amazing-chance/api prisma:generate",
+                    "db:migrate":  "pnpm run db:migrate:dev",
+                    "db:studio":  "pnpm --filter @amazing-chance/api prisma:studio",
+                    "db:migrate:dev":  "pnpm --filter @amazing-chance/api prisma:migrate:dev",
+                    "db:migrate:deploy":  "pnpm --filter @amazing-chance/api prisma:migrate:deploy",
+                    "db:migrate:status":  "pnpm --filter @amazing-chance/api prisma:migrate:status"
+                },
+    "engines":  {
+                    "node":  "\u003e=24.18.0 \u003c25",
+                    "pnpm":  "10.15.0"
+                }
 }
