@@ -9,6 +9,7 @@ export default tseslint.config(
       "coverage/**",
       "node_modules/**",
       "prisma/migrations/**",
+      "test/run-integration.cjs",
       "src/generated/**",
     ],
   },
@@ -57,3 +58,4 @@ export default tseslint.config(
     },
   },
 );
+

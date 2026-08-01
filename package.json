@@ -16,7 +16,8 @@
                     "test":  "pnpm --filter @amazing-chance/api test",
                     "test:unit":  "pnpm --filter @amazing-chance/api test:unit",
                     "test:integration":  "pnpm --filter @amazing-chance/api test:integration",
-                    "test:coverage":  "pnpm --filter @amazing-chance/api test:coverage"
+                    "test:coverage":  "pnpm --filter @amazing-chance/api test:coverage",
+                    "test:integration:db":  "pnpm --filter @amazing-chance/api test:integration:db"
                 },
     "engines":  {
                     "node":  "\u003e=24.18.0 \u003c25",

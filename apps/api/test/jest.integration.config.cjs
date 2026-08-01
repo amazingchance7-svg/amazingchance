@@ -3,6 +3,7 @@ module.exports = {
   displayName: "integration",
   rootDir: "..",
   testEnvironment: "node",
+  setupFiles: ["<rootDir>/test/integration/test-environment.ts"],
   testMatch: ["<rootDir>/test/integration/**/*.spec.ts"],
   transform: {
     "^.+\\.ts$": [
