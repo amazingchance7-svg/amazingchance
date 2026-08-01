@@ -57,11 +57,11 @@ Goal: establish a safe delivery pipeline before modifying critical business logi
 
 | ID | Priority | Task | Dependencies | Status |
 |---|---|---|---|---|
-| REP-001 | P0 | Add backend test framework and root `test` scripts | None | TODO |
-| REP-002 | P0 | Add CI for install, Prisma validate/generate, migrations, typecheck, build, lint, tests | REP-001 | TODO |
+| REP-001 | P0 | Add backend test framework and root `test` scripts | None | DONE |
+| REP-002 | P0 | Add CI for install, Prisma validate/generate, migrations, typecheck, build, lint, tests | REP-001 | IN_PROGRESS |
 | REP-003 | P1 | Add clean archive/export script excluding secrets and generated files | None | TODO |
 | REP-004 | P2 | Replace root README with project onboarding documentation | None | TODO |
-| REP-005 | P1 | Add environment-safe test database workflow | REP-001 | TODO |
+| REP-005 | P1 | Add environment-safe test database workflow | REP-001 | DONE |
 
 ## REP-001 — Test framework
 
@@ -463,12 +463,27 @@ Cancellation rules must be explicitly designed by state.
 
 ---
 
-# 13. First Execution Batch
+# 13. Current Execution Batch
 
-The first implementation batch must contain only these tasks:
+Repository and test foundation work has established the minimum safe environment for security remediation.
+
+Completed foundation items:
 
 ```text
-REP-001  Add test framework
+REP-001  Backend test framework
+REP-005  Environment-safe PostgreSQL integration-test workflow
+```
+
+Partially completed foundation item:
+
+```text
+REP-002  Continuous integration
+```
+
+The next implementation batch must contain only:
+
+```text
+REP-002  Complete remaining CI controls
 SEC-001  Lock down UsersController
 SEC-002  Remove external passwordHash
 SEC-003  Protect draw mutations
@@ -481,10 +496,9 @@ SEC-009  Enforce secret strength
 SEC-010  Add auth rate limits
 ```
 
-No payment or draw-engine feature work begins before this batch is `DONE`.
+No payment or draw-engine feature work begins before all applicable P0 items in this batch are `DONE`.
 
 ---
-
 # 14. Definition of Done for Every Remediation Item
 
 A task is `DONE` only when all applicable items are complete:
@@ -508,10 +522,11 @@ A task is `DONE` only when all applicable items are complete:
 
 | ID | Status | Commit/PR | Completion date | Notes |
 |---|---|---|---|---|
-| — | — | — | — | No remediation items completed yet |
+| REP-001 | DONE | `7eb3f54`, `bcacda4` | 2026-08-01 | Jest foundation, root unit/integration/coverage scripts, Argon2 unit tests, PostgreSQL integration and concurrency tests |
+| REP-002 | IN_PROGRESS | `4cf7696` and subsequent `rep-001-ci` commits | 2026-08-01 | GitHub Actions runs frozen install, Prisma generate, lint, typecheck, tests, clean-database migrations through integration tests, and build. Secret scan, dependency scan, explicit Prisma format/validate, and required branch protection remain open |
+| REP-005 | DONE | `bcacda4` | 2026-08-01 | Dedicated ephemeral PostgreSQL test container, clean migration deployment, deterministic cleanup, and production-separated test credentials |
 
 ---
-
 # 16. Frozen Architecture Baseline
 
 Unless changed by ADR:
@@ -546,6 +561,12 @@ Unless changed by ADR:
 
 # 17. Next Action
 
-Start with `REP-001 — Add backend test framework`.
+Complete the remaining acceptance criteria for `REP-002 — Continuous integration`:
 
-Before implementation, inspect the current package scripts and choose the smallest supported test setup for NestJS and PostgreSQL integration tests. Do not begin authorization refactoring until the test harness can verify existing and new behavior.
+1. add a secret-scanning check;
+2. add a dependency vulnerability check with an explicitly reviewed failure policy;
+3. add explicit Prisma format and validate checks;
+4. confirm the workflow runs on every pull request targeting the protected integration branch;
+5. configure the successful CI job as a required branch-protection check.
+
+After REP-002 is complete, begin `SEC-001` and `SEC-002` as one tightly coupled security batch, with authorization and DTO tests added before changing additional public API behavior.
