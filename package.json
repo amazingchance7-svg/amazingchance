@@ -12,7 +12,11 @@
                     "db:studio":  "pnpm --filter @amazing-chance/api prisma:studio",
                     "db:migrate:dev":  "pnpm --filter @amazing-chance/api prisma:migrate:dev",
                     "db:migrate:deploy":  "pnpm --filter @amazing-chance/api prisma:migrate:deploy",
-                    "db:migrate:status":  "pnpm --filter @amazing-chance/api prisma:migrate:status"
+                    "db:migrate:status":  "pnpm --filter @amazing-chance/api prisma:migrate:status",
+                    "test":  "pnpm --filter @amazing-chance/api test",
+                    "test:unit":  "pnpm --filter @amazing-chance/api test:unit",
+                    "test:integration":  "pnpm --filter @amazing-chance/api test:integration",
+                    "test:coverage":  "pnpm --filter @amazing-chance/api test:coverage"
                 },
     "engines":  {
                     "node":  "\u003e=24.18.0 \u003c25",
