@@ -29,6 +29,7 @@ export async function cleanTestDatabase(
       "payments",
       "purchase_state_events",
       "purchases",
+      "user_roles",
       "user_tokens",
       "refresh_tokens",
       "lottery_draws",

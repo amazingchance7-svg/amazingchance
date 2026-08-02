@@ -169,6 +169,8 @@ model User {
   payouts       Payout[]
   refreshTokens RefreshToken[]
   userTokens    UserToken[]
+  roles         UserRole[] @relation("UserRoleUser")
+  assignedRoles UserRole[] @relation("UserRoleAssignedBy")
 
   @@index([status])
   @@map("users")
@@ -607,4 +609,59 @@ model AuditLog {
   @@index([actorType, actorId, createdAt])
   @@index([correlationId])
   @@map("audit_logs")
+}
+
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId           String    @db.Uuid
+  roleId           String    @db.Uuid
+  assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  assignedByUserId String?   @db.Uuid
+
+  user           User  @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  role           Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  assignedByUser User? @relation("UserRoleAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@index([assignedByUserId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId      String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
 }

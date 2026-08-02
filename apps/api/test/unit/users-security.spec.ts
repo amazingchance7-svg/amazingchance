@@ -14,26 +14,46 @@ describe('Users security boundary', () => {
     expect(controllers).toEqual([]);
   });
 
-  it('creates users only from an internal registration input', async () => {
-    const create = jest.fn().mockResolvedValue({
+  it('creates a user and assigns the default customer role atomically', async () => {
+    const userCreate = jest.fn().mockResolvedValue({
       id: '8c178c35-c0cb-4634-a17f-3c868ea5e6e1',
       email: 'user@example.com',
     });
+    const userRoleCreate = jest.fn().mockResolvedValue({});
+    const roleFindUnique = jest.fn().mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000101',
+    });
 
-    const prisma = {
-      user: {
-        create,
-      },
+    type TransactionClient = {
+      role: { findUnique: typeof roleFindUnique };
+      user: { create: typeof userCreate };
+      userRole: { create: typeof userRoleCreate };
     };
 
-    const service = new UsersService(prisma as never);
+    const transaction = jest.fn(
+      async (
+        callback: (client: TransactionClient) => Promise<unknown>,
+      ) => callback({
+        role: { findUnique: roleFindUnique },
+        user: { create: userCreate },
+        userRole: { create: userRoleCreate },
+      }),
+    );
+
+    const service = new UsersService({
+      $transaction: transaction,
+    } as never);
 
     await service.createFromRegistration({
       email: '  USER@EXAMPLE.COM ',
       passwordHash: '$argon2id$test-hash',
     });
 
-    expect(create).toHaveBeenCalledWith({
+    expect(roleFindUnique).toHaveBeenCalledWith({
+      where: { code: 'CUSTOMER' },
+      select: { id: true },
+    });
+    expect(userCreate).toHaveBeenCalledWith({
       data: {
         email: 'user@example.com',
         passwordHash: '$argon2id$test-hash',
@@ -45,6 +65,12 @@ describe('Users security boundary', () => {
         emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
+      },
+    });
+    expect(userRoleCreate).toHaveBeenCalledWith({
+      data: {
+        userId: '8c178c35-c0cb-4634-a17f-3c868ea5e6e1',
+        roleId: '00000000-0000-4000-8000-000000000101',
       },
     });
   });

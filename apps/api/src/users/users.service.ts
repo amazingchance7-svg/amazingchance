@@ -1,10 +1,12 @@
 import {
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
+import { SystemRoles } from '../authorization/authorization.constants';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreateUserFromRegistrationInput {
@@ -29,12 +31,34 @@ export class UsersService {
     input: CreateUserFromRegistrationInput,
   ) {
     try {
-      return await this.prisma.user.create({
-        data: {
-          email: input.email.trim().toLowerCase(),
-          passwordHash: input.passwordHash,
-        },
-        select: publicUserSelect,
+      return await this.prisma.$transaction(async (tx) => {
+        const customerRole = await tx.role.findUnique({
+          where: { code: SystemRoles.CUSTOMER },
+          select: { id: true },
+        });
+
+        if (!customerRole) {
+          throw new InternalServerErrorException(
+            'Default customer role is not configured',
+          );
+        }
+
+        const user = await tx.user.create({
+          data: {
+            email: input.email.trim().toLowerCase(),
+            passwordHash: input.passwordHash,
+          },
+          select: publicUserSelect,
+        });
+
+        await tx.userRole.create({
+          data: {
+            userId: user.id,
+            roleId: customerRole.id,
+          },
+        });
+
+        return user;
       });
     } catch (error: unknown) {
       if (
