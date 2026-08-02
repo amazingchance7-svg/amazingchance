@@ -169,8 +169,8 @@ model User {
   payouts       Payout[]
   refreshTokens RefreshToken[]
   userTokens    UserToken[]
-  roles         UserRole[] @relation("UserRoleUser")
-  assignedRoles UserRole[] @relation("UserRoleAssignedBy")
+  roles         UserRole[]     @relation("UserRoleUser")
+  assignedRoles UserRole[]     @relation("UserRoleAssignedBy")
 
   @@index([status])
   @@map("users")
@@ -611,7 +611,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-
 model Role {
   id          String   @id @default(uuid()) @db.Uuid
   code        String   @unique
@@ -639,10 +638,10 @@ model Permission {
 }
 
 model UserRole {
-  userId           String    @db.Uuid
-  roleId           String    @db.Uuid
-  assignedAt       DateTime  @default(now()) @db.Timestamptz(3)
-  assignedByUserId String?   @db.Uuid
+  userId           String   @db.Uuid
+  roleId           String   @db.Uuid
+  assignedAt       DateTime @default(now()) @db.Timestamptz(3)
+  assignedByUserId String?  @db.Uuid
 
   user           User  @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
   role           Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
@@ -655,7 +654,7 @@ model UserRole {
 }
 
 model RolePermission {
-  roleId      String @db.Uuid
+  roleId       String @db.Uuid
   permissionId String @db.Uuid
 
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
