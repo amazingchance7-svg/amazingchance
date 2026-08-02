@@ -13,6 +13,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +23,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out full repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   quality:
     name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest
@@ -68,6 +85,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
+      - name: Check Prisma formatting
+        run: pnpm --filter @amazing-chance/api exec prisma format --check
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @amazing-chance/api exec prisma validate
 
       - name: Generate Prisma client
         run: pnpm db:generate
