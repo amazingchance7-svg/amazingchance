@@ -1,7 +1,8 @@
-﻿import { Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { AuthModule } from './auth/auth.module';
+import { AuthorizationModule } from './authorization/authorization.module';
 import { validateEnvironment } from './config/environment.validation';
 import { HealthModule } from './health/health.module';
 import { LotteryDrawsModule } from './lottery-draws/lottery-draws.module';
@@ -21,6 +22,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     HealthModule,
     UsersModule,
     AuthModule,
+    AuthorizationModule,
     LotteryDrawsModule,
     PurchasesModule,
   ],

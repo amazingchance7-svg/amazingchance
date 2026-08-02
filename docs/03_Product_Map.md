@@ -1,604 +1,516 @@
 # Amazing Chance — Product Map
 
-**Document Version:** 1.0  
-**Status:** Draft  
-**Last Updated:** 2026-07-21
+**Document Version:** 2.1  
+**Status:** Approved  
+**Authoritative business model:** `docs/01-PRODUCT.md`  
+**Detailed business rules:** `docs/05_Business_Rules.md`
 
 ---
 
-## 1. Document Purpose
+## 1. Purpose
 
-This document defines the major product modules of Amazing Chance and their responsibilities.
+This document maps the main product areas and user-facing flows of Amazing Chance.
 
-It answers the question:
+It does not redefine:
 
-> What parts does the Amazing Chance platform consist of?
+- financial allocation rules;
+- entity state machines;
+- payment-provider requirements;
+- draw-integrity rules;
+- database or API design.
 
-This document does not define database tables, API endpoints or detailed business rules. Those will be documented separately.
+Those rules remain authoritative in the related product, business, architecture, and engineering documents.
 
 ---
 
-## 2. Platform Overview
+## 2. Approved MVP Model
 
-Amazing Chance is a transparent jackpot platform built around four core capabilities:
+Amazing Chance uses direct payment for each ticket purchase.
 
-1. Users can participate in scheduled jackpot draws.
-2. Every valid ticket can be publicly verified.
-3. Every draw can be independently audited and replayed.
-4. Every financial and administrative action is recorded.
+The MVP does not include:
+
+- a customer wallet;
+- customer deposit balances;
+- top-ups;
+- withdrawals from an internal balance;
+- user-to-user transfers;
+- virtual credits.
+
+Each payment is linked to one specific purchase for one specific draw.
+
+The approved allocation of confirmed eligible ticket revenue is:
+
+- 70% — Weekly Prize Pool;
+- 20% — Company Revenue;
+- 10% — Annual Prize Fund.
+
+Only successfully paid tickets may participate in a draw.
 
 ---
 
 ## 3. Platform Map
 
 ```text
-Amazing Chance Platform
+Amazing Chance
 │
 ├── Public Experience
-│   ├── Home Page
-│   ├── Current Jackpot
+│   ├── Home
+│   ├── Current Weekly Draw
 │   ├── Draw Countdown
+│   ├── Ticket Price
 │   ├── How It Works
-│   ├── Draw Results
-│   ├── Public Ticket Search
-│   └── Transparency Center
+│   ├── Completed Draws
+│   ├── Public Ticket Verification
+│   └── Transparency and Verification
 │
 ├── User Account
 │   ├── Registration
-│   ├── Authentication
-│   ├── Identity and Age Verification
+│   ├── Email Verification
+│   ├── Login
+│   ├── Password Recovery
 │   ├── Profile
 │   ├── Security Settings
-│   └── Responsible Participation Controls
+│   └── Account Status
 │
-├── Participation
-│   ├── Ticket Purchase
-│   ├── Payment Processing
-│   ├── Ticket Allocation
-│   ├── Purchase History
-│   └── Ticket Verification
+├── Ticket Participation
+│   ├── Select Draw
+│   ├── Select Ticket Quantity
+│   ├── Create Purchase
+│   ├── Complete Direct Payment
+│   ├── Confirm Payment
+│   ├── Allocate Tickets
+│   ├── View Purchase History
+│   └── View and Verify Tickets
 │
 ├── Draw System
 │   ├── Weekly Draw
 │   ├── Annual Draw
 │   ├── Draw Lifecycle
-│   ├── Ticket Set Finalization
-│   ├── Randomness Provider
-│   ├── Winner Selection
-│   └── Prize Calculation
+│   ├── Sales Closure
+│   ├── Ticket Snapshot
+│   ├── RANDOM.ORG Evidence
+│   ├── Deterministic Winner Selection
+│   ├── Results Publication
+│   └── Public Draw Replay
 │
-├── Financial System
-│   ├── Payment Ledger
-│   ├── Prize Ledger
-│   ├── Jackpot Allocation
+├── Financial Records
+│   ├── Payment Records
+│   ├── Allocation Rules
+│   ├── Weekly Prize Pool Accounting
+│   ├── Company Revenue Accounting
+│   ├── Annual Prize Fund Accounting
+│   ├── Ledger
 │   ├── Refunds
+│   ├── Prizes
 │   ├── Payouts
 │   └── Reconciliation
 │
-├── Transparency and Audit
-│   ├── Public Ticket Registry
-│   ├── Draw Timeline
-│   ├── Draw Archive
-│   ├── Verification Certificate
-│   ├── Cryptographic Hashes
-│   ├── Draw Replay
-│   └── Audit Log
-│
-├── User Engagement
-│   ├── Notifications
-│   ├── Achievements
-│   ├── Reputation
-│   └── Referral System
-│
 ├── Administration
-│   ├── User Management
-│   ├── Draw Monitoring
+│   ├── User Operations
+│   ├── Draw Operations
 │   ├── Payment Monitoring
-│   ├── Payout Review
-│   ├── Fraud Review
-│   ├── Compliance Review
-│   └── System Configuration
+│   ├── Reconciliation
+│   ├── Prize and Payout Review
+│   ├── Risk and Compliance Review
+│   └── Audit Review
 │
 └── Platform Operations
     ├── Security
     ├── Monitoring
+    ├── Background Processing
     ├── Incident Management
-    ├── Analytics
     ├── Backups
     └── Infrastructure
-4. Public Experience
-4.1 Home Page
+```
 
-The Home Page communicates the product value immediately.
+---
 
-It displays:
+## 4. Core User Journey
 
-current weekly jackpot;
-current annual jackpot;
-draw countdown;
-ticket price;
-primary participation action;
-key transparency indicators.
+```text
+Open Amazing Chance
+        ↓
+View current draw
+        ↓
+Register or log in
+        ↓
+Select number of tickets
+        ↓
+Create purchase
+        ↓
+Pay exact purchase amount through approved provider
+        ↓
+Wait for verified payment confirmation
+        ↓
+Receive allocated tickets
+        ↓
+View tickets in account
+        ↓
+Wait for draw completion
+        ↓
+View published results
+        ↓
+Independently verify draw evidence
+        ↓
+Follow prize process if a ticket wins
+```
 
-The first screen must remain simple and focused.
+A failed, cancelled, expired, unverified, or unresolved payment must not create eligible tickets.
 
-4.2 Current Jackpot
+---
 
-The platform displays the current jackpot amount using confirmed financial data.
+## 5. Public Experience
 
-The displayed jackpot must never be based on unconfirmed payments.
+### 5.1 Home
 
-4.3 How It Works
+The home page should present:
 
-This section explains:
+- current weekly draw;
+- current eligible prize-pool amount;
+- draw date and countdown;
+- ticket price;
+- primary ticket-purchase action;
+- concise explanation of verification.
 
-how a ticket is purchased;
-how the ticket becomes public;
-how the draw is finalized;
-how winners are selected;
-how results can be verified.
-4.4 Public Draw Results
+Displayed financial values must use confirmed eligible financial records.
 
-Users can view:
+### 5.2 How It Works
 
-completed draws;
-winning ticket IDs;
-prize amounts;
-draw timestamp;
-verification certificate;
-randomness provider evidence.
-4.5 Public Ticket Search
+This section should explain:
 
-A user can search for a ticket using its public ticket ID.
+1. select ticket quantity;
+2. create a purchase;
+3. pay the exact amount;
+4. receive tickets after verified payment;
+5. wait for sales closure and snapshot finalization;
+6. review published RANDOM.ORG evidence;
+7. reproduce winner selection.
 
-Public information may include:
+### 5.3 Completed Draws
 
-public ticket ID;
-public nickname;
-draw identifier;
-ticket status;
-purchase confirmation timestamp.
+Users should be able to view:
 
-Private personal information must never be displayed.
+- draw identifier;
+- draw dates;
+- finalized ticket count;
+- winning public ticket identifiers;
+- prize amounts;
+- publication timestamp;
+- verification evidence;
+- algorithm version.
 
-5. User Account
-5.1 Registration and Authentication
+### 5.4 Public Ticket Verification
 
-The account system manages:
+A public ticket search may expose:
 
-registration;
-login;
-email verification;
-password recovery;
-multi-factor authentication;
-session management.
-5.2 Identity and Age Verification
+- public ticket identifier;
+- draw identifier;
+- ticket status;
+- eligibility status;
+- issuance timestamp.
 
-Identity and age verification requirements depend on the operating jurisdiction.
+It must not expose private personal, identity, or payment information.
 
-The system must be designed so that verification can be required before:
+---
 
-purchasing tickets;
-withdrawing prizes;
-exceeding regulatory limits.
+## 6. User Account
 
-The exact rules must not be implemented until the legal jurisdiction is selected.
+The account area includes:
 
-5.3 Responsible Participation Controls
+- registration;
+- email verification;
+- login and logout;
+- password recovery;
+- profile;
+- security settings;
+- purchase history;
+- ticket history;
+- prize status;
+- security notifications.
 
-Depending on legal requirements, the platform may include:
+Identity, age, responsible-participation, and KYC controls remain dependent on the selected jurisdiction.
 
-purchase limits;
-account cooling-off periods;
-self-exclusion;
-account suspension;
-responsible participation information.
+---
 
-These controls are mandatory product considerations, not optional marketing features.
+## 7. Direct Ticket Purchase
 
-6. Participation
-6.1 Ticket Purchase
+The approved purchase flow is:
 
-The purchase process must:
+```text
+Select draw
+    ↓
+Select ticket quantity
+    ↓
+Create purchase in CREATED state
+    ↓
+Create payment session
+    ↓
+Purchase enters PAYMENT_PENDING
+    ↓
+Receive authenticated provider result
+    ↓
+Confirm exact amount, currency, merchant and purchase reference
+    ↓
+Purchase enters PAYMENT_CONFIRMED
+    ↓
+Reserve non-overlapping ticket range
+    ↓
+Create exact number of tickets
+    ↓
+Purchase enters COMPLETED
+    ↓
+Notify user
+```
 
-create a purchase request;
-send the user to an approved payment provider;
-confirm the payment;
-allocate tickets exactly once;
-publish the public ticket records;
-issue a receipt.
+The payment provider has not yet been approved.
 
-A payment attempt must never create tickets before confirmed payment.
+This document must not name a provider as supported until the product, legal, financial, and technical decision is formally recorded.
 
-6.2 Ticket Allocation
+---
 
-Tickets are allocated only after successful payment confirmation.
+## 8. Purchase History
+
+A user should be able to view:
+
+- purchase identifier;
+- creation date;
+- selected draw;
+- requested ticket quantity;
+- exact amount and currency;
+- payment status;
+- purchase status;
+- allocated public ticket identifiers;
+- refund or manual-review status where applicable.
+
+Historical state changes must remain auditable.
+
+---
+
+## 9. Ticket Participation
+
+Tickets are allocated only after verified payment confirmation.
 
 The system must guarantee:
 
-no duplicate ticket IDs;
-no missing allocated tickets;
-no double allocation after repeated requests;
-full traceability to the purchase.
+- one ticket belongs to one purchase;
+- one ticket belongs to one draw;
+- ticket numbers do not overlap within a draw;
+- retries do not create duplicate allocations;
+- the number of created tickets equals the paid quantity;
+- tickets cannot be added after snapshot finalization;
+- finalized participation evidence cannot be edited.
 
-Tickets should be allocated dynamically rather than pre-generated in massive quantities.
+Detailed ticket and purchase states are defined in `docs/05_Business_Rules.md`.
 
-6.3 Purchase History
+---
 
-The user can view:
+## 10. Draw Experience
 
-purchase date;
-payment amount;
-number of tickets;
-associated draw;
-payment status;
-ticket IDs;
-refund status.
-7. Draw System
-7.1 Weekly Draw
+The user-facing draw progression is:
 
-The Weekly Draw is the primary recurring draw.
-
-Its planned prize allocation is:
-
-70% of eligible ticket revenue to the Weekly Jackpot;
-15% to the Annual Jackpot;
-15% to company revenue.
-
-The final structure remains subject to legal, tax and payment-processing validation.
-
-7.2 Weekly Winner Distribution
-
-The current proposed Weekly Jackpot distribution is:
-
-first winner: 50%;
-second winner: 30%;
-third winner: 20%.
-
-This is a product assumption and must be validated before launch.
-
-7.3 Annual Draw
-
-The Annual Draw uses funds accumulated from the annual jackpot allocation.
-
-Its exact:
-
-schedule;
-eligibility rules;
-number of winners;
-prize distribution;
-jurisdictional treatment
-
-must be defined in the Business Rules document after legal review.
-
-7.4 Draw Lifecycle
-
-Each draw follows a controlled lifecycle:
-
-Draft
-→ Open
-→ Ticket Sales Active
-→ Sales Closed
-→ Ticket Set Finalized
-→ Hash Published
-→ Randomness Requested
-→ Winners Selected
-→ Results Published
-→ Prizes Processed
-→ Archived
-
-A draw cannot move backward to an earlier state.
-
-7.5 Randomness Provider
-
-The proposed external randomness provider is Random.org.
-
-Before production launch, the platform must verify:
-
-service availability;
-commercial terms;
-API limits;
-audit evidence;
-fallback procedures;
-regulatory acceptance.
-
-The system must not silently switch to another randomness source during a draw.
-
-8. Financial System
-8.1 Financial Ledger
-
-Every financial event must create an immutable ledger entry.
-
-Examples:
-
-payment received;
-payment failed;
-refund created;
-weekly jackpot allocation;
-annual jackpot allocation;
-company allocation;
-prize obligation;
-prize payout.
-
-Balances must be calculated from ledger entries rather than manually edited totals.
-
-8.2 Jackpot Allocation
-
-Jackpot values must be based only on eligible, confirmed and reconciled payments.
-
-Chargebacks, refunds and failed payments must be handled according to documented business rules.
-
-8.3 Prize Payouts
-
-Prize payouts may require:
-
-identity verification;
-sanctions screening;
-anti-money-laundering checks;
-tax processing;
-manual review above defined limits.
-
-No administrator should be able to change a winner or prize amount directly.
-
-8.4 Reconciliation
-
-The platform must reconcile:
-
-internal purchase records;
-payment-provider records;
-ledger entries;
-ticket allocations;
-jackpot allocations;
-completed payouts.
-
-Any mismatch must generate an operational alert.
-
-9. Transparency and Audit
-9.1 Public Ticket Registry
-
-Every valid ticket must appear in the public registry before the draw is finalized.
-
-The registry must not reveal:
-
-legal name;
-email;
-address;
-payment details;
-identity documents.
-9.2 Draw Timeline
-
-Each completed draw displays a chronological record of important events.
-
-Example:
-
-Draw opened
-Ticket sales started
-Ticket sales closed
-Final ticket count recorded
-Ticket-set hash published
-Randomness requested
-Randomness response received
-Winners calculated
-Results published
+```text
+Scheduled
+    ↓
+Sales open
+    ↓
+Sales closed
+    ↓
+Eligible ticket snapshot finalized
+    ↓
+RANDOM.ORG evidence requested and verified
+    ↓
+Deterministic winner selection executed
+    ↓
+Results completed
+    ↓
+Verification evidence published
+    ↓
 Prizes processed
-Draw archived
-9.3 Verification Certificate
+```
 
-Each completed draw receives a permanent certificate containing:
+The exact internal state machine remains authoritative in `docs/05_Business_Rules.md` and the architecture documentation.
 
-draw ID;
-draw dates;
-final ticket count;
-ticket-set hash;
-randomness request evidence;
-randomness result;
-winning ticket IDs;
-prize distribution;
-publication timestamp;
-software version used for the draw.
-9.4 Draw Replay
+Administrators must not be able to:
 
-The replay tool allows an independent party to repeat the winner-selection calculation using:
+- add eligible tickets after finalization;
+- change the accepted randomness evidence;
+- manually select or replace winners;
+- modify completed results.
 
-the finalized ticket set;
-the published randomness result;
-the published selection algorithm.
+---
 
-The same inputs must always produce the same winners.
+## 11. Transparency and Verification
 
-9.5 Audit Log
+Each completed draw should publish sufficient non-private evidence to verify:
 
-The audit log records sensitive actions performed by:
+- which draw was executed;
+- when sales closed;
+- the finalized eligible ticket set;
+- the snapshot hash;
+- the RANDOM.ORG request and response evidence;
+- the normalized random positions;
+- the winner-selection algorithm version;
+- the resulting winning public ticket identifiers;
+- the publication timestamp.
 
-administrators;
-automated services;
-support agents;
-compliance personnel.
+The same accepted inputs and algorithm version must always reproduce the same winners.
 
-Audit records must not be editable through the administration interface.
+---
 
-10. User Engagement
-10.1 Notifications
+## 12. Prize and Payout Experience
+
+A winning result creates a prize record.
+
+Prize and payout processing may require:
+
+- identity verification;
+- age verification;
+- sanctions screening;
+- tax processing;
+- manual review;
+- legally required claim procedures.
+
+The exact payout and claim rules remain open until jurisdictional and legal decisions are approved.
+
+The product must not promise automatic payout where those rules are not yet defined.
+
+---
+
+## 13. Refund and Exception Experience
+
+Refund behavior depends on the approved refund policy and payment-provider capabilities.
+
+Current required product behavior:
+
+- failed payment creates no tickets;
+- expired payment creates no tickets;
+- duplicate callbacks create no duplicate tickets;
+- late payment enters reconciliation or manual review;
+- a closed draw does not accept late tickets;
+- a purchase is never silently moved to another draw;
+- the user receives a clear status;
+- any approved correction uses auditable compensating records.
+
+This document does not define automatic refunds as a universal rule.
+
+---
+
+## 14. Administration
+
+Administrative tools may support:
+
+- user-status operations;
+- draw scheduling and controlled lifecycle commands;
+- payment and webhook monitoring;
+- reconciliation;
+- risk and compliance review;
+- prize and payout review;
+- audit inspection;
+- incident response.
+
+Administrative access must use explicit permissions.
+
+Administrative tools must not permit direct editing of:
+
+- confirmed payments;
+- ledger history;
+- issued tickets;
+- finalized snapshots;
+- accepted randomness evidence;
+- winners;
+- published draw results;
+- immutable audit records.
+
+---
+
+## 15. Notifications
 
 The platform may notify users about:
 
-successful purchases;
-ticket allocation;
-upcoming draw closure;
-draw results;
-prize status;
-account-security events.
+- registration and email verification;
+- successful payment confirmation;
+- ticket issuance;
+- purchase failure, expiration, or manual review;
+- draw closure;
+- draw publication;
+- winning ticket;
+- prize or payout status;
+- account-security events.
 
-Notifications must not use false urgency or misleading claims.
+Notifications report authoritative system state and must not create or change business state.
 
-10.2 Achievements and Reputation
+---
 
-Achievements must reward participation in the community and transparency features rather than excessive spending.
+## 16. MVP Scope
 
-Possible achievements:
+The MVP product map includes:
 
-Early Supporter;
-Transparency Explorer;
-Verified Member;
-Weekly Supporter;
-Annual Supporter;
-Community Member;
-Lucky Winner.
+- public landing experience;
+- registration and authentication;
+- direct ticket purchase;
+- payment confirmation;
+- deterministic ticket allocation;
+- user purchase and ticket history;
+- weekly draw;
+- annual prize-fund accounting;
+- finalized ticket snapshot;
+- RANDOM.ORG evidence;
+- deterministic winner selection;
+- public draw verification;
+- prize and payout workflow;
+- basic administration;
+- immutable financial and audit records.
 
-Achievements must not change the probability of winning.
+---
 
-10.3 Referral System
+## 17. Out of Scope
 
-The referral system is not part of the initial critical transaction flow.
+The MVP does not include:
 
-It must not be launched until:
+- customer wallet;
+- stored customer balance;
+- deposits for future purchases;
+- user-initiated wallet withdrawals;
+- user-to-user transfers;
+- virtual credits or tradable tokens;
+- ticket resale;
+- online casino games;
+- sports betting;
+- poker;
+- cryptocurrency exchange;
+- multiple game formats;
+- multiple jurisdictions at launch.
 
-fraud controls are defined;
-unit economics are validated;
-legal restrictions are reviewed;
-reward funding is identified.
-11. Administration
-11.1 Administrative Principles
+---
 
-Administrators may monitor and manage operations, but they must not be able to:
+## 18. Open Product Decisions
 
-create winning tickets;
-replace winners;
-modify finalized ticket sets;
-change published randomness;
-delete audit evidence;
-directly edit ledger balances.
-11.2 Role-Based Access
+The following remain unresolved until formally approved:
 
-Administrative permissions must be separated by role.
+- operating jurisdiction;
+- legal classification and licensing;
+- age and identity verification;
+- payment provider;
+- refund policy;
+- prize claim window;
+- tax handling;
+- annual draw rules;
+- payout procedure;
+- responsible-participation controls;
+- fraud and chargeback model.
 
-Possible roles:
+These items must not be represented as implemented or approved product features.
 
-Support;
-Finance;
-Compliance;
-Risk;
-Operations;
-Security;
-System Administrator.
+---
 
-Sensitive operations may require approval from more than one authorized person.
+## 19. Related Documentation
 
-12. Platform Operations
-12.1 Security
-
-The platform requires:
-
-encryption in transit and at rest;
-secure authentication;
-secrets management;
-rate limiting;
-fraud monitoring;
-vulnerability management;
-access logging;
-incident response procedures.
-12.2 Monitoring
-
-The system must monitor:
-
-payment failures;
-ticket-allocation failures;
-duplicate requests;
-draw-state transitions;
-randomness-provider availability;
-reconciliation mismatches;
-suspicious account activity;
-payout failures.
-12.3 Backups and Recovery
-
-The platform requires tested backup and recovery procedures.
-
-A backup is not considered reliable until its restoration has been successfully tested.
-
-13. MVP Scope
-
-The first production-ready MVP should include only:
-
-public Home Page;
-registration and login;
-basic identity and age controls required by jurisdiction;
-approved payment integration;
-ticket purchase;
-ticket allocation;
-user ticket history;
-Weekly Draw;
-public ticket registry;
-draw archive;
-verification certificate;
-draw replay;
-financial ledger;
-basic administration;
-security monitoring;
-audit logging.
-14. Not Included in the Initial MVP
-
-The initial MVP should not include:
-
-complex achievement systems;
-advanced referrals;
-multiple game formats;
-crypto payments;
-internal tradable tokens;
-social feeds;
-ticket resale;
-user-to-user transfers;
-mobile applications;
-multiple jurisdictions at launch.
-
-These features may be considered only after the core model is legally validated and economically proven.
-
-15. Critical Dependencies
-
-The platform cannot launch until the following are resolved:
-
-Operating jurisdiction.
-Legal classification of the product.
-Required licences.
-Approved payment providers.
-Identity and age-verification requirements.
-Responsible participation requirements.
-Tax treatment of ticket sales and prizes.
-Randomness-provider acceptance.
-Prize payout procedures.
-Fraud and chargeback model.
-16. Product Boundary
-
-Amazing Chance is responsible for:
-
-user accounts;
-purchases;
-ticket allocation;
-draws;
-financial records;
-transparency;
-prize processing;
-audit evidence.
-
-External providers may be responsible for:
-
-payments;
-identity verification;
-sanctions screening;
-email and SMS delivery;
-randomness generation;
-infrastructure hosting.
-
-Amazing Chance remains responsible for validating and recording every external result used by the platform.
-
-17. Product Success Conditions
-
-The product is not ready for launch unless it can demonstrate:
-
-every confirmed purchase creates the correct number of tickets;
-repeated payment callbacks cannot create duplicate tickets;
-finalized draws cannot be altered;
-public results can be independently verified;
-financial allocations reconcile exactly;
-administrators cannot secretly change winners;
-recovery procedures have been tested;
-the legal operating model has been approved.
+- `docs/01-PRODUCT.md`
+- `docs/05_Business_Rules.md`
+- `docs/00_System_Architecture.md`
+- `docs/01_ENGINEERING_PRINCIPLES.md`
+- `docs/02_PLATFORM_PRINCIPLES.md`
+- `docs/STANDARDS.md`
+- `docs/architecture/system.md`
+- `docs/modules/README.md`
+- `docs/audits/REMEDIATION_PLAN.md`

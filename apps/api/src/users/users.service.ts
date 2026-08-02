@@ -1,12 +1,18 @@
-﻿import {
+import {
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
+import { SystemRoles } from '../authorization/authorization.constants';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
+
+export interface CreateUserFromRegistrationInput {
+  email: string;
+  passwordHash: string;
+}
 
 const publicUserSelect = {
   id: true,
@@ -21,34 +27,51 @@ const publicUserSelect = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateUserDto) {
+  async createFromRegistration(
+    input: CreateUserFromRegistrationInput,
+  ) {
     try {
-      return await this.prisma.user.create({
-        data: {
-          email: dto.email.trim().toLowerCase(),
-          passwordHash: dto.passwordHash,
-        },
-        select: publicUserSelect,
+      return await this.prisma.$transaction(async (tx) => {
+        const customerRole = await tx.role.findUnique({
+          where: { code: SystemRoles.CUSTOMER },
+          select: { id: true },
+        });
+
+        if (!customerRole) {
+          throw new InternalServerErrorException(
+            'Default customer role is not configured',
+          );
+        }
+
+        const user = await tx.user.create({
+          data: {
+            email: input.email.trim().toLowerCase(),
+            passwordHash: input.passwordHash,
+          },
+          select: publicUserSelect,
+        });
+
+        await tx.userRole.create({
+          data: {
+            userId: user.id,
+            roleId: customerRole.id,
+          },
+        });
+
+        return user;
       });
     } catch (error: unknown) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException('User with this email already exists');
+        throw new ConflictException(
+          'User with this email already exists',
+        );
       }
 
       throw error;
     }
-  }
-
-  async findAll() {
-    return this.prisma.user.findMany({
-      select: publicUserSelect,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
   }
 
   async findOne(id: string) {
@@ -78,24 +101,6 @@ export class UsersService {
         createdAt: true,
         updatedAt: true,
       },
-    });
-  }
-
-  async updateStatus(id: string, status: UserStatus) {
-    await this.findOne(id);
-
-    return this.prisma.user.update({
-      where: { id },
-      data: { status },
-      select: publicUserSelect,
-    });
-  }
-
-  async remove(id: string): Promise<void> {
-    await this.findOne(id);
-
-    await this.prisma.user.delete({
-      where: { id },
     });
   }
 }
