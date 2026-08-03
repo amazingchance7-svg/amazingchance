@@ -298,7 +298,7 @@ describe('Verified payment orchestration integration', () => {
     await expectNoOrchestrationSideEffects(s.purchase.id);
   });
 
-  it('detects a corrupted completed purchase', async () => {
+  it('prevents corruption of a completed purchase by deleting a ticket', async () => {
     const s = await scenario(2);
 
     await service.confirmPayment(s.payment.id);
@@ -307,15 +307,24 @@ describe('Verified payment orchestration integration', () => {
       where: { purchaseId: s.purchase.id },
     });
 
-    await prisma.$executeRaw`
-      DELETE FROM "tickets"
-      WHERE "id" = ${ticket.id}::uuid
-    `;
-
     await expect(
-      service.confirmPayment(s.payment.id),
+      prisma.$executeRaw`
+        DELETE FROM "tickets"
+        WHERE "id" = ${ticket.id}::uuid
+      `,
     ).rejects.toThrow(
-      'Completed purchase has an inconsistent ticket allocation',
+      'Tickets are immutable and cannot be deleted',
     );
+
+    expect(
+      await prisma.ticket.count({
+        where: { purchaseId: s.purchase.id },
+      }),
+    ).toBe(2);
+
+    const result = await service.confirmPayment(s.payment.id);
+
+    expect(result.alreadyProcessed).toBe(true);
+    expect(result.ticketCount).toBe(2);
   });
 });
