@@ -281,7 +281,7 @@ model PurchaseStateEvent {
   source        AuditActorType
   correlationId String
   metadata      Json?
-  sealedAt       DateTime?             @db.Timestamptz(3)
+  sealedAt      DateTime?       @db.Timestamptz(3)
   createdAt     DateTime        @default(now()) @db.Timestamptz(3)
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
@@ -605,7 +605,7 @@ model AuditLog {
   previousState Json?
   newState      Json?
   metadata      Json?
-  sealedAt       DateTime?             @db.Timestamptz(3)
+  sealedAt      DateTime?      @db.Timestamptz(3)
   createdAt     DateTime       @default(now()) @db.Timestamptz(3)
 
   @@index([entityType, entityId, createdAt])
