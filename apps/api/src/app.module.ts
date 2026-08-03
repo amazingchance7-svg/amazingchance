@@ -6,6 +6,7 @@ import { AuthorizationModule } from './authorization/authorization.module';
 import { validateEnvironment } from './config/environment.validation';
 import { HealthModule } from './health/health.module';
 import { LotteryDrawsModule } from './lottery-draws/lottery-draws.module';
+import { LedgerModule } from './ledger/ledger.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { PurchasesModule } from './purchases/purchases.module';
@@ -24,6 +25,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     AuthModule,
     AuthorizationModule,
     LotteryDrawsModule,
+    LedgerModule,
     PurchasesModule,
   ],
 })
