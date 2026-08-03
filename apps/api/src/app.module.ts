@@ -10,6 +10,7 @@ import { LedgerModule } from './ledger/ledger.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { PurchasesModule } from './purchases/purchases.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PurchasesModule } from './purchases/purchases.module';
     LotteryDrawsModule,
     LedgerModule,
     PurchasesModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}
