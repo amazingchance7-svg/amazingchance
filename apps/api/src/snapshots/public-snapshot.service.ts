@@ -5,9 +5,9 @@ import {
   import {
     SnapshotStatus,
   } from '@prisma/client';
-  
+
   import { PrismaService } from '../prisma/prisma.service';
-  
+
   export type PublicSnapshotResponse = {
     drawId: string;
     drawPublicId: string;
@@ -20,13 +20,13 @@ import {
     builtAt: Date | null;
     finalizedAt: Date;
   };
-  
+
   @Injectable()
   export class PublicSnapshotService {
     constructor(
       private readonly prisma: PrismaService,
     ) {}
-  
+
     async findFinalizedByDrawId(
       drawId: string,
     ): Promise<PublicSnapshotResponse> {
@@ -62,7 +62,7 @@ import {
             },
           },
         });
-  
+
       if (
         !snapshot ||
         !snapshot.snapshotHash ||
@@ -73,7 +73,7 @@ import {
           'Finalized ticket snapshot not found',
         );
       }
-  
+
       return {
         drawId: snapshot.drawId,
         drawPublicId: snapshot.draw.publicId,
