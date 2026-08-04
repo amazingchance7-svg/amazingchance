@@ -20,10 +20,10 @@ import {
 const OWNER_SECRET =
   'integration-snapshot-owner-secret-at-least-32-bytes';
 
-describe('Public snapshot integration', () => {
+describe('Public snapshot download integration', () => {
   let prisma: PrismaService;
-  let cryptography: SnapshotCryptographyService;
   let builder: SnapshotBuilderService;
+  let cryptography: SnapshotCryptographyService;
   let finalizer: SnapshotFinalizerService;
   let publicSnapshot: PublicSnapshotService;
 
@@ -57,9 +57,7 @@ describe('Public snapshot integration', () => {
     await prisma.$disconnect();
   });
 
-  async function createDrawWithSnapshot(
-    finalizeSnapshot: boolean,
-  ) {
+  async function createBuiltSnapshot() {
     const user = await prisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
@@ -74,12 +72,8 @@ describe('Public snapshot integration', () => {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
         status: DrawStatus.SALES_OPEN,
-        sequenceNumber: Math.floor(
-          Math.random() * 1_000_000,
-        ),
-        scheduledDrawAt: new Date(
-          Date.now() + 86_400_000,
-        ),
+        sequenceNumber: Math.floor(Math.random() * 1_000_000),
+        scheduledDrawAt: new Date(Date.now() + 86_400_000),
         currency: 'USD',
         ticketPriceMinor: 100n,
       },
@@ -91,9 +85,9 @@ describe('Public snapshot integration', () => {
         userId: user.id,
         drawId: draw.id,
         status: PurchaseStatus.COMPLETED,
-        requestedTicketCount: 2,
+        requestedTicketCount: 3,
         ticketPriceMinor: 100n,
-        totalAmountMinor: 200n,
+        totalAmountMinor: 300n,
         currency: 'USD',
         idempotencyKey: randomUUID(),
         paymentConfirmedAt: new Date(),
@@ -101,7 +95,7 @@ describe('Public snapshot integration', () => {
       },
     });
 
-    for (let index = 1; index <= 2; index += 1) {
+    for (let index = 1; index <= 3; index += 1) {
       await prisma.ticket.create({
         data: {
           publicId: `TKT-${randomUUID()}`,
@@ -114,19 +108,11 @@ describe('Public snapshot integration', () => {
     }
 
     await prisma.lotteryDraw.update({
-      where: {
-        id: draw.id,
-      },
-      data: {
-        status: DrawStatus.SALES_CLOSED,
-      },
+      where: { id: draw.id },
+      data: { status: DrawStatus.SALES_CLOSED },
     });
 
     const built = await builder.build(draw.id);
-
-    if (finalizeSnapshot) {
-      await finalizer.finalize(draw.id);
-    }
 
     return {
       user,
@@ -136,71 +122,95 @@ describe('Public snapshot integration', () => {
     };
   }
 
-  it('returns public metadata for a finalized snapshot', async () => {
-    const scenario =
-      await createDrawWithSnapshot(true);
-
-    const result =
-      await publicSnapshot.findFinalizedByDrawId(
-        scenario.draw.id,
-      );
-
-    expect(result).toMatchObject({
-      drawId: scenario.draw.id,
-      drawPublicId: scenario.draw.publicId,
-      status: 'FINALIZED',
-      ticketCount: '2',
-      canonicalFormat:
-        'AMAZING_CHANCE_TICKET_SNAPSHOT_V1',
-      hashAlgorithm: 'SHA-256',
-    });
-
-    expect(result.snapshotHash).toHaveLength(64);
-    expect(result.merkleRoot).toHaveLength(64);
-    expect(result.builtAt).toBeInstanceOf(Date);
-    expect(result.finalizedAt).toBeInstanceOf(Date);
-  });
-
-  it('does not expose internal snapshot or ownership fields', async () => {
-    const scenario =
-      await createDrawWithSnapshot(true);
-
-    const result =
-      await publicSnapshot.findFinalizedByDrawId(
-        scenario.draw.id,
-      );
-
-    expect(result).not.toHaveProperty('snapshotId');
-    expect(result).not.toHaveProperty('id');
-    expect(result).not.toHaveProperty('entries');
-    expect(result).not.toHaveProperty(
-      'ownerPublicRef',
+  async function createFinalizedSnapshot() {
+    const scenario = await createBuiltSnapshot();
+    const finalized = await finalizer.finalize(
+      scenario.draw.id,
     );
-    expect(result).not.toHaveProperty('ticketId');
-    expect(result).not.toHaveProperty('userId');
-  });
 
-  it('serializes ticketCount as a JSON-safe string', async () => {
-    const scenario =
-      await createDrawWithSnapshot(true);
+    return {
+      ...scenario,
+      finalized,
+    };
+  }
 
-    const result =
-      await publicSnapshot.findFinalizedByDrawId(
+  it('returns the exact canonical snapshot text', async () => {
+    const scenario = await createFinalizedSnapshot();
+
+    const snapshot =
+      await prisma.ticketSnapshot.findUniqueOrThrow({
+        where: {
+          id: scenario.built.snapshotId,
+        },
+        include: {
+          entries: {
+            orderBy: [
+              {
+                position: 'asc',
+              },
+              {
+                id: 'asc',
+              },
+            ],
+          },
+        },
+      });
+
+    const expected = cryptography.createCommitment(
+      snapshot.canonicalFormat,
+      scenario.draw.id,
+      snapshot.entries.map((entry) => ({
+        position: entry.position,
+        ticketPublicId: entry.ticketPublicId,
+        ownerPublicRef: entry.ownerPublicRef,
+      })),
+    );
+
+    const download =
+      await publicSnapshot.downloadFinalizedByDrawId(
         scenario.draw.id,
       );
 
-    expect(typeof result.ticketCount).toBe(
-      'string',
+    expect(download.canonicalSnapshot).toBe(
+      expected.canonicalSnapshot,
     );
-    expect(() => JSON.stringify(result)).not.toThrow();
   });
 
-  it('returns not found for a building snapshot', async () => {
-    const scenario =
-      await createDrawWithSnapshot(false);
+  it('returns the stored SHA-256 snapshot hash', async () => {
+    const scenario = await createFinalizedSnapshot();
+
+    const download =
+      await publicSnapshot.downloadFinalizedByDrawId(
+        scenario.draw.id,
+      );
+
+    expect(download.snapshotHash).toBe(
+      scenario.finalized.snapshotHash,
+    );
+    expect(download.snapshotHash).toHaveLength(64);
+  });
+
+  it('returns a safe filename and plain text content type', async () => {
+    const scenario = await createFinalizedSnapshot();
+
+    const download =
+      await publicSnapshot.downloadFinalizedByDrawId(
+        scenario.draw.id,
+      );
+
+    expect(download.filename).toBe(
+      `${scenario.draw.publicId}-snapshot.txt`,
+    );
+    expect(download.contentType).toBe(
+      'text/plain; charset=utf-8',
+    );
+  });
+
+  it('returns not found for a non-finalized snapshot', async () => {
+    const scenario = await createBuiltSnapshot();
 
     await expect(
-      publicSnapshot.findFinalizedByDrawId(
+      publicSnapshot.downloadFinalizedByDrawId(
         scenario.draw.id,
       ),
     ).rejects.toThrow(
@@ -208,13 +218,25 @@ describe('Public snapshot integration', () => {
     );
   });
 
-  it('returns not found for an unknown draw', async () => {
+  it('rejects a finalized snapshot with a corrupted commitment', async () => {
+    const scenario = await createBuiltSnapshot();
+
+    await prisma.$executeRaw`
+      UPDATE "ticket_snapshots"
+      SET
+        "status" = 'FINALIZED'::"SnapshotStatus",
+        "snapshotHash" = ${'a'.repeat(64)},
+        "merkleRoot" = ${'b'.repeat(64)},
+        "finalizedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${scenario.built.snapshotId}::uuid
+    `;
+
     await expect(
-      publicSnapshot.findFinalizedByDrawId(
-        randomUUID(),
+      publicSnapshot.downloadFinalizedByDrawId(
+        scenario.draw.id,
       ),
     ).rejects.toThrow(
-      'Finalized ticket snapshot not found',
+      'Stored snapshot hash does not match canonical snapshot',
     );
   });
 });
