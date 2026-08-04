@@ -26,6 +26,7 @@ import { PermissionsGuard } from '../authorization/permissions.guard';
 import { RequirePermissions } from '../authorization/require-permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { SnapshotBuilderService } from '../snapshots/snapshot-builder.service';
+import { SnapshotFinalizerService } from '../snapshots/snapshot-finalizer.service';
 import { CreateLotteryDrawDto } from './dto/create-lottery-draw.dto';
 import { UpdateLotteryDrawDto } from './dto/update-lottery-draw.dto';
 import { LotteryDrawsService } from './lottery-draws.service';
@@ -38,6 +39,7 @@ export class AdminLotteryDrawsController {
   constructor(
     private readonly lotteryDrawsService: LotteryDrawsService,
     private readonly snapshotBuilderService: SnapshotBuilderService,
+    private readonly snapshotFinalizerService: SnapshotFinalizerService,
   ) {}
 
   @Post()
@@ -152,6 +154,35 @@ export class AdminLotteryDrawsController {
   })
   buildSnapshot(@Param('id', ParseUUIDPipe) id: string) {
     return this.snapshotBuilderService.build(id);
+  }
+
+  @Post(':id/finalize-snapshot')
+  @RequirePermissions(Permissions.DRAW_FINALIZE_SNAPSHOT)
+  @ApiOperation({
+    summary: 'Finalize the ticket snapshot commitment',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiOkResponse({
+    description: 'Ticket snapshot finalized successfully.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Snapshot cannot be finalized or its integrity check failed.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Ticket snapshot or lottery draw not found.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description: 'Missing draw.finalize_snapshot permission.',
+  })
+  finalizeSnapshot(@Param('id', ParseUUIDPipe) id: string) {
+    return this.snapshotFinalizerService.finalize(id);
   }
 
   @Post(':id/cancel')
