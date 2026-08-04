@@ -7,6 +7,7 @@ import {
   IsUrl,
   Max,
   Min,
+  MinLength,
   validateSync,
 } from 'class-validator';
 
@@ -53,6 +54,11 @@ class EnvironmentVariables {
   @IsInt()
   @Min(3600)
   JWT_REFRESH_TTL_SECONDS = 2_592_000;
+
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(32)
+  SNAPSHOT_OWNER_SECRET!: string;
 }
 
 export function validateEnvironment(
