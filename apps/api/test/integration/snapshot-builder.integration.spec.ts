@@ -149,9 +149,9 @@ describe('Snapshot builder integration', () => {
     };
   }
 
-  function ownerRef(userId: string): string {
+  function ownerRef(drawId: string, userId: string): string {
     return createHmac('sha256', OWNER_SECRET)
-      .update(userId, 'utf8')
+      .update(`${drawId}:${userId}`, 'utf8')
       .digest('hex');
   }
 
@@ -196,19 +196,28 @@ describe('Snapshot builder integration', () => {
         position: 1n,
         ticketId: scenario.ticketOne.id,
         ticketPublicId: scenario.ticketOne.publicId,
-        ownerPublicRef: ownerRef(scenario.firstUser.id),
+        ownerPublicRef: ownerRef(
+          scenario.draw.id,
+          scenario.firstUser.id,
+        ),
       },
       {
         position: 2n,
         ticketId: scenario.ticketTwo.id,
         ticketPublicId: scenario.ticketTwo.publicId,
-        ownerPublicRef: ownerRef(scenario.firstUser.id),
+        ownerPublicRef: ownerRef(
+          scenario.draw.id,
+          scenario.firstUser.id,
+        ),
       },
       {
         position: 3n,
         ticketId: scenario.ticketThree.id,
         ticketPublicId: scenario.ticketThree.publicId,
-        ownerPublicRef: ownerRef(scenario.secondUser.id),
+        ownerPublicRef: ownerRef(
+          scenario.draw.id,
+          scenario.secondUser.id,
+        ),
       },
     ]);
 
@@ -269,6 +278,84 @@ describe('Snapshot builder integration', () => {
 
     expect(await prisma.ticketSnapshot.count()).toBe(1);
     expect(await prisma.ticketSnapshotEntry.count()).toBe(3);
+  });
+
+  it('creates different owner references for the same user in different draws', async () => {
+    const scenario = await createScenario();
+
+    const secondDraw = await prisma.lotteryDraw.create({
+      data: {
+        publicId: `W-2026-${randomUUID()}`,
+        type: DrawType.WEEKLY,
+        status: DrawStatus.SALES_OPEN,
+        sequenceNumber: Math.floor(Math.random() * 1_000_000),
+        scheduledDrawAt: new Date(Date.now() + 172_800_000),
+        currency: 'USD',
+        ticketPriceMinor: 100n,
+      },
+    });
+
+    const secondDrawPurchase = await prisma.purchase.create({
+      data: {
+        publicId: `PUR-${randomUUID()}`,
+        userId: scenario.firstUser.id,
+        drawId: secondDraw.id,
+        status: PurchaseStatus.COMPLETED,
+        requestedTicketCount: 1,
+        ticketPriceMinor: 100n,
+        totalAmountMinor: 100n,
+        currency: 'USD',
+        idempotencyKey: randomUUID(),
+        paymentConfirmedAt: new Date(),
+        completedAt: new Date(),
+      },
+    });
+
+    await prisma.ticket.create({
+      data: {
+        publicId: `TKT-${randomUUID()}`,
+        userId: scenario.firstUser.id,
+        purchaseId: secondDrawPurchase.id,
+        drawId: secondDraw.id,
+        numberInDraw: 1n,
+      },
+    });
+
+    await prisma.lotteryDraw.update({
+      where: { id: secondDraw.id },
+      data: { status: DrawStatus.SALES_CLOSED },
+    });
+
+    await service.build(scenario.draw.id);
+    await service.build(secondDraw.id);
+
+    const firstEntry =
+      await prisma.ticketSnapshotEntry.findFirstOrThrow({
+        where: {
+          snapshot: {
+            drawId: scenario.draw.id,
+          },
+          ticket: {
+            userId: scenario.firstUser.id,
+          },
+        },
+      });
+
+    const secondEntry =
+      await prisma.ticketSnapshotEntry.findFirstOrThrow({
+        where: {
+          snapshot: {
+            drawId: secondDraw.id,
+          },
+          ticket: {
+            userId: scenario.firstUser.id,
+          },
+        },
+      });
+
+    expect(firstEntry.ownerPublicRef).not.toBe(
+      secondEntry.ownerPublicRef,
+    );
   });
 
   it('rejects a draw whose sales are not closed', async () => {
