@@ -418,6 +418,7 @@ model TicketSnapshot {
   canonicalFormat String
   hashAlgorithm   String         @default("SHA-256")
   snapshotHash    String?        @unique
+  merkleRoot      String?
   builtAt         DateTime?      @db.Timestamptz(3)
   finalizedAt     DateTime?      @db.Timestamptz(3)
   createdAt       DateTime       @default(now()) @db.Timestamptz(3)
