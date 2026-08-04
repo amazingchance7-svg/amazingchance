@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 
+import { PublicProofService } from '../snapshots/public-proof.service';
 import { PublicSnapshotService } from '../snapshots/public-snapshot.service';
 import { ListLotteryDrawsDto } from './dto/list-lottery-draws.dto';
 import { LotteryDrawsService } from './lottery-draws.service';
@@ -27,6 +28,7 @@ export class LotteryDrawsController {
   constructor(
     private readonly lotteryDrawsService: LotteryDrawsService,
     private readonly publicSnapshotService: PublicSnapshotService,
+    private readonly publicProofService: PublicProofService,
   ) {}
 
   @Get()
@@ -103,6 +105,39 @@ export class LotteryDrawsController {
   ) {
     return this.publicSnapshotService.findFinalizedByDrawId(
       id,
+    );
+  }
+
+  @Get(':id/tickets/:ticketPublicId/proof')
+  @ApiOperation({
+    summary: 'Get a Merkle proof for a finalized ticket',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiParam({
+    name: 'ticketPublicId',
+    description: 'Public ticket identifier',
+  })
+  @ApiOkResponse({
+    description: 'Merkle proof returned successfully.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Stored snapshot integrity does not match its entries.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Finalized snapshot or ticket was not found.',
+  })
+  findTicketProof(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('ticketPublicId') ticketPublicId: string,
+  ) {
+    return this.publicProofService.findProofByTicketPublicId(
+      id,
+      ticketPublicId,
     );
   }
 
