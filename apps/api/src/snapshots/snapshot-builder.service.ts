@@ -123,6 +123,7 @@ export class SnapshotBuilderService {
               position: BigInt(index + 1),
               ticketPublicId: ticket.publicId,
               ownerPublicRef: this.createOwnerPublicRef(
+                drawId,
                 ticket.userId,
               ),
             })),
@@ -159,9 +160,12 @@ export class SnapshotBuilderService {
     );
   }
 
-  private createOwnerPublicRef(userId: string): string {
+  private createOwnerPublicRef(
+    drawId: string,
+    userId: string,
+  ): string {
     return createHmac('sha256', this.ownerSecret)
-      .update(userId, 'utf8')
+      .update(`${drawId}:${userId}`, 'utf8')
       .digest('hex');
   }
 }
