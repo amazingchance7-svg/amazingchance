@@ -1,12 +1,15 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   Res,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -17,8 +20,10 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 
+import { VerifyMerkleProofDto } from '../snapshots/dto/verify-merkle-proof.dto';
 import { PublicProofService } from '../snapshots/public-proof.service';
 import { PublicSnapshotService } from '../snapshots/public-snapshot.service';
+import { PublicVerificationService } from '../snapshots/public-verification.service';
 import { ListLotteryDrawsDto } from './dto/list-lottery-draws.dto';
 import { LotteryDrawsService } from './lottery-draws.service';
 
@@ -29,6 +34,7 @@ export class LotteryDrawsController {
     private readonly lotteryDrawsService: LotteryDrawsService,
     private readonly publicSnapshotService: PublicSnapshotService,
     private readonly publicProofService: PublicProofService,
+    private readonly publicVerificationService: PublicVerificationService,
   ) {}
 
   @Get()
@@ -138,6 +144,36 @@ export class LotteryDrawsController {
     return this.publicProofService.findProofByTicketPublicId(
       id,
       ticketPublicId,
+    );
+  }
+
+  @Post(':id/verify-proof')
+  @ApiOperation({
+    summary:
+      'Verify a Merkle proof against the official finalized snapshot',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Merkle proof verification result returned successfully.',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Merkle proof request has an invalid format.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Finalized ticket snapshot not found.',
+  })
+  verifyProof(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VerifyMerkleProofDto,
+  ) {
+    return this.publicVerificationService.verifyProof(
+      id,
+      dto,
     );
   }
 
