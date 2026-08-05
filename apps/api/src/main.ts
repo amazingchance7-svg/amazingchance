@@ -1,6 +1,7 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import {
@@ -13,13 +14,44 @@ import { ResponseEnvelopeInterceptor } from './common/interceptors/response-enve
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
+
+  const isProduction =
+    process.env.NODE_ENV === 'production';
+
+  app.use(
+    isProduction
+      ? helmet()
+      : helmet({
+          contentSecurityPolicy: false,
+        }),
+  );
 
   app.enableCors({
-    origin: process.env.WEB_URL ?? API_DEFAULT_WEB_ORIGIN,
+    origin:
+      process.env.WEB_URL ??
+      API_DEFAULT_WEB_ORIGIN,
     credentials: true,
+    methods: [
+      'GET',
+      'HEAD',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS',
+    ],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Idempotency-Key',
+    ],
   });
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalFilters(
+    new HttpExceptionFilter(),
+  );
+
   app.useGlobalInterceptors(
     new LoggingInterceptor(),
     new ResponseEnvelopeInterceptor(),
@@ -33,25 +65,45 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Amazing Chance API')
-    .setDescription('Backend API for Amazing Chance Lottery Platform')
-    .setVersion('1.0.0')
-    .addBearerAuth()
-    .build();
+  if (!isProduction) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Amazing Chance API')
+      .setDescription(
+        'Backend API for Amazing Chance Lottery Platform',
+      )
+      .setVersion('1.0.0')
+      .addBearerAuth()
+      .build();
 
-  const swaggerDocument = SwaggerModule.createDocument(
-    app,
-    swaggerConfig,
+    const swaggerDocument =
+      SwaggerModule.createDocument(
+        app,
+        swaggerConfig,
+      );
+
+    SwaggerModule.setup(
+      'api/docs',
+      app,
+      swaggerDocument,
+    );
+  }
+
+  const port = Number(
+    process.env.API_PORT ??
+      API_DEFAULT_PORT,
   );
 
-  SwaggerModule.setup('api/docs', app, swaggerDocument);
+  await app.listen(port);
 
-  await app.listen(Number(process.env.API_PORT ?? API_DEFAULT_PORT));
-
-  console.log(
-    `Swagger documentation: http://localhost:${process.env.API_PORT ?? API_DEFAULT_PORT}/api/docs`,
+  logger.log(
+    `Amazing Chance API listening on port ${port}`,
   );
+
+  if (!isProduction) {
+    logger.log(
+      `Swagger documentation: http://localhost:${port}/api/docs`,
+    );
+  }
 }
 
 void bootstrap();

@@ -1,4 +1,7 @@
-import { plainToInstance, Type } from 'class-transformer';
+import {
+  plainToInstance,
+  Type,
+} from 'class-transformer';
 import {
   IsEnum,
   IsInt,
@@ -19,7 +22,8 @@ enum NodeEnvironment {
 
 class EnvironmentVariables {
   @IsEnum(NodeEnvironment)
-  NODE_ENV: NodeEnvironment = NodeEnvironment.Development;
+  NODE_ENV: NodeEnvironment =
+    NodeEnvironment.Development;
 
   @Type(() => Number)
   @IsInt()
@@ -37,8 +41,15 @@ class EnvironmentVariables {
   })
   REDIS_URL!: string;
 
+  @IsUrl({
+    require_tld: false,
+    protocols: ['http', 'https'],
+  })
+  WEB_URL = 'http://localhost:3000';
+
   @IsString()
   @IsNotEmpty()
+  @MinLength(32)
   JWT_ACCESS_SECRET!: string;
 
   @Type(() => Number)
@@ -48,6 +59,7 @@ class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
+  @MinLength(32)
   JWT_REFRESH_SECRET!: string;
 
   @Type(() => Number)
@@ -64,25 +76,59 @@ class EnvironmentVariables {
 export function validateEnvironment(
   config: Record<string, unknown>,
 ): EnvironmentVariables {
-  const validatedConfig = plainToInstance(EnvironmentVariables, config, {
-    enableImplicitConversion: true,
-  });
+  const validatedConfig = plainToInstance(
+    EnvironmentVariables,
+    config,
+    {
+      enableImplicitConversion: true,
+    },
+  );
 
-  const errors = validateSync(validatedConfig, {
-    skipMissingProperties: false,
-    whitelist: true,
-  });
+  const errors = validateSync(
+    validatedConfig,
+    {
+      skipMissingProperties: false,
+      whitelist: true,
+    },
+  );
 
   if (errors.length > 0) {
     const messages = errors
       .flatMap((error) =>
-        Object.values(error.constraints ?? {}).map(
-          (message) => `${error.property}: ${message}`,
+        Object.values(
+          error.constraints ?? {},
+        ).map(
+          (message) =>
+            `${error.property}: ${message}`,
         ),
       )
       .join('; ');
 
-    throw new Error(`Environment validation failed: ${messages}`);
+    throw new Error(
+      `Environment validation failed: ${messages}`,
+    );
+  }
+
+  if (
+    validatedConfig.JWT_ACCESS_SECRET ===
+    validatedConfig.JWT_REFRESH_SECRET
+  ) {
+    throw new Error(
+      'Environment validation failed: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different',
+    );
+  }
+
+  if (
+    validatedConfig.NODE_ENV ===
+      NodeEnvironment.Production &&
+    (
+      typeof config.WEB_URL !== 'string' ||
+      config.WEB_URL.trim().length === 0
+    )
+  ) {
+    throw new Error(
+      'Environment validation failed: WEB_URL is required in production',
+    );
   }
 
   return validatedConfig;
