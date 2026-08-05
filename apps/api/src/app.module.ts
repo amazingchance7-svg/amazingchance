@@ -1,6 +1,10 @@
-import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+} from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import {
   ThrottlerGuard,
   ThrottlerModule,
@@ -8,6 +12,7 @@ import {
 
 import { AuthModule } from './auth/auth.module';
 import { AuthorizationModule } from './authorization/authorization.module';
+import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
 import { validateEnvironment } from './config/environment.validation';
 import { HealthModule } from './health/health.module';
 import { LedgerModule } from './ledger/ledger.module';
@@ -55,4 +60,16 @@ import { UsersModule } from './users/users.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule
+  implements NestModule
+{
+  configure(
+    consumer: MiddlewareConsumer,
+  ): void {
+    consumer
+      .apply(
+        RequestContextMiddleware,
+      )
+      .forRoutes('*');
+  }
+}
