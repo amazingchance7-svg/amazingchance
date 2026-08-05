@@ -78,6 +78,8 @@ async function bootstrap(): Promise<void> {
       'Authorization',
       'Content-Type',
       'Idempotency-Key',
+      'X-Request-ID',
+      'X-Correlation-ID',
     ],
   });
 
