@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useMemo, useState } from 'react';
 
 import styles from './verify.module.css';
@@ -93,7 +94,7 @@ function shortenHash(value: string): string {
     return value;
   }
 
-  return `${value.slice(0, 12)}…${value.slice(-12)}`;
+  return `${value.slice(0, 12)}вЂ¦${value.slice(-12)}`;
 }
 
 async function readErrorMessage(
@@ -286,17 +287,17 @@ export default function VerifyPage() {
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <a className={styles.brand} href="/">
+        <Link className={styles.brand} href="/">
           <span className={styles.brandMark}>AC</span>
 
           <span>
             <strong>Amazing Chance</strong>
             <small>Public verification portal</small>
           </span>
-        </a>
+        </Link>
 
         <span className={styles.securityBadge}>
-          SHA-256 · Merkle proof
+          SHA-256 В· Merkle proof
         </span>
       </header>
 
@@ -352,7 +353,7 @@ export default function VerifyPage() {
             disabled={loadingAudit}
           >
             {loadingAudit
-              ? 'Loading audit…'
+              ? 'Loading auditвЂ¦'
               : 'Load audit manifest'}
           </button>
         </form>
@@ -395,7 +396,7 @@ export default function VerifyPage() {
             }
           >
             {loadingVerification
-              ? 'Verifying ticket…'
+              ? 'Verifying ticketвЂ¦'
               : 'Verify ticket proof'}
           </button>
         </form>
@@ -507,7 +508,7 @@ export default function VerifyPage() {
           }
         >
           <div className={styles.resultIcon}>
-            {verification.result.valid ? '✓' : '×'}
+            {verification.result.valid ? 'вњ“' : 'Г—'}
           </div>
 
           <div className={styles.resultContent}>

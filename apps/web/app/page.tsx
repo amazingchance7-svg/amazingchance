@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function HomePage() {
   return (
     <main>
@@ -14,9 +16,9 @@ export default function HomePage() {
           a ticket was included in the official draw.
         </p>
 
-        <a href="/verify">
+        <Link href="/verify">
           Open verification portal
-        </a>
+        </Link>
       </section>
     </main>
   );
