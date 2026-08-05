@@ -15,8 +15,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 
+import { THROTTLING_POLICIES } from '../common/constants/throttling.constants';
 import { AuthService } from './auth.service';
 import { EmailDto } from './dto/email.dto';
 import { LoginDto } from './dto/login.dto';
@@ -41,10 +43,15 @@ export class AuthController {
     description: 'Authentication service is available.',
   })
   ping() {
-    return this.authService.ping();
+    return {
+      status: 'ok',
+    };
   }
 
   @Post('register')
+  @Throttle({
+    default: THROTTLING_POLICIES.register,
+  })
   @ApiOperation({
     summary: 'Register a new user',
   })
@@ -59,6 +66,9 @@ export class AuthController {
   }
 
   @Post('login')
+  @Throttle({
+    default: THROTTLING_POLICIES.login,
+  })
   @ApiOperation({
     summary: 'Log in with email and password',
   })
@@ -76,6 +86,9 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle({
+    default: THROTTLING_POLICIES.refresh,
+  })
   @ApiOperation({
     summary: 'Refresh access and refresh tokens',
   })
@@ -90,6 +103,9 @@ export class AuthController {
   }
 
   @Post('logout')
+  @Throttle({
+    default: THROTTLING_POLICIES.logout,
+  })
   @ApiOperation({
     summary: 'Log out and revoke refresh token',
   })
@@ -104,6 +120,9 @@ export class AuthController {
   }
 
   @Post('verify-email')
+  @Throttle({
+    default: THROTTLING_POLICIES.verifyEmail,
+  })
   @ApiOperation({
     summary: 'Verify user email address',
   })
@@ -118,6 +137,10 @@ export class AuthController {
   }
 
   @Post('resend-verification')
+  @Throttle({
+    default:
+      THROTTLING_POLICIES.resendVerification,
+  })
   @ApiOperation({
     summary: 'Resend email verification message',
   })
@@ -132,6 +155,10 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @Throttle({
+    default:
+      THROTTLING_POLICIES.forgotPassword,
+  })
   @ApiOperation({
     summary: 'Request a password reset message',
   })
@@ -146,6 +173,10 @@ export class AuthController {
   }
 
   @Post('reset-password')
+  @Throttle({
+    default:
+      THROTTLING_POLICIES.resetPassword,
+  })
   @ApiOperation({
     summary: 'Reset password using a reset token',
   })
