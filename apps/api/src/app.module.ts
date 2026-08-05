@@ -10,6 +10,7 @@ import {
   ThrottlerModule,
 } from '@nestjs/throttler';
 
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthorizationModule } from './authorization/authorization.module';
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
@@ -43,6 +44,7 @@ import { UsersModule } from './users/users.module';
       },
     ]),
     PrismaModule,
+    AuditModule,
     HealthModule,
     UsersModule,
     AuthModule,
