@@ -21,6 +21,7 @@ import {
 import type { Response } from 'express';
 
 import { VerifyMerkleProofDto } from '../snapshots/dto/verify-merkle-proof.dto';
+import { PublicAuditService } from '../snapshots/public-audit.service';
 import { PublicProofService } from '../snapshots/public-proof.service';
 import { PublicSnapshotService } from '../snapshots/public-snapshot.service';
 import { PublicVerificationService } from '../snapshots/public-verification.service';
@@ -35,6 +36,7 @@ export class LotteryDrawsController {
     private readonly publicSnapshotService: PublicSnapshotService,
     private readonly publicProofService: PublicProofService,
     private readonly publicVerificationService: PublicVerificationService,
+    private readonly publicAuditService: PublicAuditService,
   ) {}
 
   @Get()
@@ -44,6 +46,30 @@ export class LotteryDrawsController {
   })
   findAll(@Query() query: ListLotteryDrawsDto) {
     return this.lotteryDrawsService.findAll(query);
+  }
+
+  @Get(':id/audit')
+  @ApiOperation({
+    summary:
+      'Get the public audit manifest for a finalized draw snapshot',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Public audit manifest returned successfully.',
+  })
+  @ApiNotFoundResponse({
+    description: 'Finalized ticket snapshot not found.',
+  })
+  findAuditManifest(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.publicAuditService.findManifestByDrawId(
+      id,
+    );
   }
 
   @Get(':id/snapshot/download')

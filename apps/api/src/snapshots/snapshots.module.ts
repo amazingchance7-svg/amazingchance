@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';
+import { PublicAuditService } from './public-audit.service';
 import { PublicProofService } from './public-proof.service';
 import { PublicSnapshotService } from './public-snapshot.service';
 import { PublicVerificationService } from './public-verification.service';
@@ -11,6 +12,7 @@ import { SnapshotFinalizerService } from './snapshot-finalizer.service';
 @Module({
   imports: [PrismaModule],
   providers: [
+    PublicAuditService,
     PublicProofService,
     PublicSnapshotService,
     PublicVerificationService,
@@ -19,6 +21,7 @@ import { SnapshotFinalizerService } from './snapshot-finalizer.service';
     SnapshotFinalizerService,
   ],
   exports: [
+    PublicAuditService,
     PublicProofService,
     PublicSnapshotService,
     PublicVerificationService,
