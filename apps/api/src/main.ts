@@ -1,6 +1,17 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import {
+  Logger,
+  ValidationPipe,
+} from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import {
+  DocumentBuilder,
+  SwaggerModule,
+} from '@nestjs/swagger';
+import type {
+  NextFunction,
+  Request,
+  Response,
+} from 'express';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
@@ -11,20 +22,42 @@ import {
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
+import {
+  createHelmetOptions,
+  PERMISSIONS_POLICY_HEADER,
+} from './config/security-headers.config';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(
+    AppModule,
+  );
+
   const logger = new Logger('Bootstrap');
 
   const isProduction =
     process.env.NODE_ENV === 'production';
 
   app.use(
-    isProduction
-      ? helmet()
-      : helmet({
-          contentSecurityPolicy: false,
-        }),
+    helmet(
+      createHelmetOptions(
+        isProduction,
+      ),
+    ),
+  );
+
+  app.use(
+    (
+      _request: Request,
+      response: Response,
+      next: NextFunction,
+    ) => {
+      response.setHeader(
+        'Permissions-Policy',
+        PERMISSIONS_POLICY_HEADER,
+      );
+
+      next();
+    },
   );
 
   app.enableCors({
@@ -66,14 +99,15 @@ async function bootstrap(): Promise<void> {
   );
 
   if (!isProduction) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('Amazing Chance API')
-      .setDescription(
-        'Backend API for Amazing Chance Lottery Platform',
-      )
-      .setVersion('1.0.0')
-      .addBearerAuth()
-      .build();
+    const swaggerConfig =
+      new DocumentBuilder()
+        .setTitle('Amazing Chance API')
+        .setDescription(
+          'Backend API for Amazing Chance Lottery Platform',
+        )
+        .setVersion('1.0.0')
+        .addBearerAuth()
+        .build();
 
     const swaggerDocument =
       SwaggerModule.createDocument(
