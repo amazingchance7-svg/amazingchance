@@ -6,66 +6,62 @@ import {
 } from '../../src/audit/audit-events.constants';
 import { AdminLotteryDrawsController } from '../../src/lottery-draws/admin-lottery-draws.controller';
 
-describe('AdminLotteryDrawsController winner selection', () => {
-  const completedAt =
-    new Date('2026-08-07T06:00:00.000Z');
+describe('AdminLotteryDrawsController randomness', () => {
+  const verifiedAt =
+    new Date('2026-08-07T09:00:00.000Z');
 
   const result = {
-    drawId:
+    evidenceId:
       '11111111-1111-4111-8111-111111111111',
+    drawId:
+      '22222222-2222-4222-8222-222222222222',
     drawPublicId:
       'W-2026-001',
-    status: 'COMPLETED' as const,
-    randomnessEvidenceId:
-      '22222222-2222-4222-8222-222222222222',
-    snapshotId:
-      '33333333-3333-4333-8333-333333333333',
-    snapshotHash:
-      'a'.repeat(64),
-    merkleRoot:
-      'b'.repeat(64),
-    completedAt,
-    alreadyCompleted: false,
-    winners: [
-      {
-        id:
-          '44444444-4444-4444-8444-444444444444',
-        rank: 1,
-        ticketId:
-          '55555555-5555-4555-8555-555555555555',
-        ticketPublicId:
-          'TKT-001',
-        ownerPublicRef:
-          'owner-ref-001',
-        snapshotEntryId:
-          '66666666-6666-4666-8666-666666666666',
-        randomPosition: '7',
-      },
+    provider:
+      'RANDOM_ORG',
+    attemptNumber: 1,
+    requestedMin: '1',
+    requestedMax: '100',
+    requestedCount: 3,
+    randomPositions: [
+      '7',
+      '42',
+      '81',
     ],
+    responseHash:
+      'a'.repeat(64),
+    providerSignature:
+      'signed-provider-response',
+    signatureVerified:
+      true as const,
+    verifiedAt,
+    alreadyVerified:
+      false,
   };
 
   function createController(
-    winnerResult = result,
+    randomnessResult = result,
   ) {
     const lotteryDrawsService = {};
     const snapshotBuilderService = {};
     const snapshotFinalizerService = {};
-    const randomnessEvidenceService = {};
 
-    const winnerSelectionService = {
-      finalize: jest
-        .fn()
-        .mockResolvedValue(
-          winnerResult,
-        ),
+    const randomnessEvidenceService = {
+      requestAndVerify:
+        jest.fn()
+          .mockResolvedValue(
+            randomnessResult,
+          ),
     };
 
+    const winnerSelectionService = {};
+
     const auditService = {
-      recordSafe: jest
-        .fn()
-        .mockResolvedValue(
-          undefined,
-        ),
+      recordSafe:
+        jest.fn()
+          .mockResolvedValue(
+            undefined,
+          ),
     };
 
     const controller =
@@ -80,29 +76,29 @@ describe('AdminLotteryDrawsController winner selection', () => {
 
     return {
       controller,
-      winnerSelectionService,
+      randomnessEvidenceService,
       auditService,
     };
   }
 
-  it('requires draw.select_winners permission', () => {
+  it('requires draw.request_randomness permission', () => {
     const permissions =
       Reflect.getMetadata(
         REQUIRED_PERMISSIONS_KEY,
         AdminLotteryDrawsController
           .prototype
-          .selectWinners,
+          .requestRandomness,
       );
 
     expect(permissions).toEqual([
-      Permissions.DRAW_SELECT_WINNERS,
+      Permissions.DRAW_REQUEST_RANDOMNESS,
     ]);
   });
 
-  it('selects winners and records completion audit event', async () => {
+  it('requests randomness and records verification audit event', async () => {
     const {
       controller,
-      winnerSelectionService,
+      randomnessEvidenceService,
       auditService,
     } = createController();
 
@@ -118,7 +114,7 @@ describe('AdminLotteryDrawsController winner selection', () => {
     };
 
     const response =
-      await controller.selectWinners(
+      await controller.requestRandomness(
         result.drawId,
         request as never,
       );
@@ -128,7 +124,8 @@ describe('AdminLotteryDrawsController winner selection', () => {
     );
 
     expect(
-      winnerSelectionService.finalize,
+      randomnessEvidenceService
+        .requestAndVerify,
     ).toHaveBeenCalledWith(
       result.drawId,
     );
@@ -137,14 +134,16 @@ describe('AdminLotteryDrawsController winner selection', () => {
       auditService.recordSafe,
     ).toHaveBeenCalledWith({
       actorType: 'ADMIN',
-      actorId: 'admin-user-id',
+      actorId:
+        'admin-user-id',
       action:
         AuditActions
-          .DRAW_WINNER_SELECTION_COMPLETED,
+          .DRAW_RANDOMNESS_VERIFIED,
       entityType:
-        AuditEntityTypes.LOTTERY_DRAW,
+        AuditEntityTypes
+          .RANDOMNESS_EVIDENCE,
       entityId:
-        result.drawId,
+        result.evidenceId,
       requestId:
         'request-id',
       correlationId:
@@ -152,46 +151,48 @@ describe('AdminLotteryDrawsController winner selection', () => {
       ipAddress:
         '127.0.0.1',
       newState: {
-        status:
-          'COMPLETED',
-        completedAt:
-          completedAt.toISOString(),
+        drawStatus:
+          'RANDOMNESS_VERIFIED',
+        signatureVerified:
+          true,
+        verifiedAt:
+          verifiedAt.toISOString(),
       },
       metadata: {
+        drawId:
+          result.drawId,
         drawPublicId:
           result.drawPublicId,
-        randomnessEvidenceId:
-          result.randomnessEvidenceId,
-        snapshotId:
-          result.snapshotId,
-        snapshotHash:
-          result.snapshotHash,
-        merkleRoot:
-          result.merkleRoot,
-        alreadyCompleted:
-          false,
-        winnerCount: 1,
-        winners: [
-          {
-            rank: 1,
-            ticketPublicId:
-              'TKT-001',
-            ownerPublicRef:
-              'owner-ref-001',
-            snapshotEntryId:
-              '66666666-6666-4666-8666-666666666666',
-            randomPosition:
-              '7',
-          },
+        provider:
+          'RANDOM_ORG',
+        attemptNumber:
+          1,
+        requestedMin:
+          '1',
+        requestedMax:
+          '100',
+        requestedCount:
+          3,
+        responseHash:
+          result.responseHash,
+        providerSignature:
+          result.providerSignature,
+        randomPositions: [
+          '7',
+          '42',
+          '81',
         ],
+        alreadyVerified:
+          false,
       },
     });
   });
 
-  it('records replay audit event for an already completed draw', async () => {
+  it('records replay audit event for existing verified evidence', async () => {
     const replayResult = {
       ...result,
-      alreadyCompleted: true,
+      alreadyVerified:
+        true,
     };
 
     const {
@@ -201,7 +202,7 @@ describe('AdminLotteryDrawsController winner selection', () => {
       replayResult,
     );
 
-    await controller.selectWinners(
+    await controller.requestRandomness(
       result.drawId,
       {
         user: {
@@ -221,10 +222,15 @@ describe('AdminLotteryDrawsController winner selection', () => {
       expect.objectContaining({
         action:
           AuditActions
-            .DRAW_WINNER_SELECTION_REPLAYED,
+            .DRAW_RANDOMNESS_REPLAYED,
+        entityType:
+          AuditEntityTypes
+            .RANDOMNESS_EVIDENCE,
+        entityId:
+          result.evidenceId,
         metadata:
           expect.objectContaining({
-            alreadyCompleted:
+            alreadyVerified:
               true,
           }),
       }),

@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthorizationModule } from '../authorization/authorization.module';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { RandomnessModule } from '../randomness/randomness.module';
 import { SnapshotsModule } from '../snapshots/snapshots.module';
 import { WinnerSelectionModule } from '../winners/winner-selection.module';
 import { AdminLotteryDrawsController } from './admin-lottery-draws.controller';
@@ -16,6 +17,7 @@ import { PublicDrawResultService } from './public-draw-result.service';
     AuthModule,
     AuthorizationModule,
     SnapshotsModule,
+    RandomnessModule,
     WinnerSelectionModule,
   ],
   controllers: [

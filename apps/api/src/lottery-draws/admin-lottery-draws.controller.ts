@@ -38,6 +38,7 @@ import { PermissionsGuard } from '../authorization/permissions.guard';
 import { RequirePermissions } from '../authorization/require-permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { RequestContextRequest } from '../common/types/request-context.type';
+import { RandomnessEvidenceService } from '../randomness/randomness-evidence.service';
 import { SnapshotBuilderService } from '../snapshots/snapshot-builder.service';
 import { SnapshotFinalizerService } from '../snapshots/snapshot-finalizer.service';
 import { WinnerSelectionService } from '../winners/winner-selection.service';
@@ -54,6 +55,7 @@ export class AdminLotteryDrawsController {
     private readonly lotteryDrawsService: LotteryDrawsService,
     private readonly snapshotBuilderService: SnapshotBuilderService,
     private readonly snapshotFinalizerService: SnapshotFinalizerService,
+    private readonly randomnessEvidenceService: RandomnessEvidenceService,
     private readonly winnerSelectionService: WinnerSelectionService,
     private readonly auditService: AuditService,
   ) {}
@@ -263,6 +265,100 @@ export class AdminLotteryDrawsController {
     );
   }
 
+  @Post(':id/request-randomness')
+  @RequirePermissions(
+    Permissions.DRAW_REQUEST_RANDOMNESS,
+  )
+  @ApiOperation({
+    summary:
+      'Request and verify signed randomness evidence',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Signed randomness evidence verified successfully.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Randomness prerequisites, binding, signature, or draw state are invalid.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Lottery draw not found.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Missing draw.request_randomness permission.',
+  })
+  async requestRandomness(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: RequestContextRequest,
+  ) {
+    const result =
+      await this.randomnessEvidenceService.requestAndVerify(
+        id,
+      );
+
+    const context =
+      getAuditRequestContext(request);
+
+    await this.auditService.recordSafe({
+      actorType: AuditActorType.ADMIN,
+      actorId: request.user?.id ?? null,
+      action: result.alreadyVerified
+        ? AuditActions
+            .DRAW_RANDOMNESS_REPLAYED
+        : AuditActions
+            .DRAW_RANDOMNESS_VERIFIED,
+      entityType:
+        AuditEntityTypes
+          .RANDOMNESS_EVIDENCE,
+      entityId:
+        result.evidenceId,
+      ...context,
+      newState: {
+        drawStatus:
+          'RANDOMNESS_VERIFIED',
+        signatureVerified:
+          result.signatureVerified,
+        verifiedAt:
+          result.verifiedAt.toISOString(),
+      },
+      metadata: {
+        drawId:
+          result.drawId,
+        drawPublicId:
+          result.drawPublicId,
+        provider:
+          result.provider,
+        attemptNumber:
+          result.attemptNumber,
+        requestedMin:
+          result.requestedMin,
+        requestedMax:
+          result.requestedMax,
+        requestedCount:
+          result.requestedCount,
+        responseHash:
+          result.responseHash,
+        providerSignature:
+          result.providerSignature,
+        randomPositions:
+          result.randomPositions,
+        alreadyVerified:
+          result.alreadyVerified,
+      },
+    });
+
+    return result;
+  }
   @Post(':id/select-winners')
   @RequirePermissions(
     Permissions.DRAW_SELECT_WINNERS,
