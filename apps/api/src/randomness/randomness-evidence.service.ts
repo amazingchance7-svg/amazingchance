@@ -9,12 +9,10 @@ import {
   RandomnessStatus,
   SnapshotStatus,
 } from '@prisma/client';
-import {
-  createHash,
-  randomUUID,
-} from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { sha256CanonicalJson } from './randomness-canonical-json.util';
 import {
   RANDOMNESS_API_VERSION,
   RANDOMNESS_BINDING_VERSION,
@@ -555,14 +553,9 @@ export class RandomnessEvidenceService {
     random:
       RandomOrgSignedResult['random'],
   ): string {
-    return createHash(
-      'sha256',
-    )
-      .update(
-        JSON.stringify(random),
-        'utf8',
-      )
-      .digest('hex');
+    return sha256CanonicalJson(
+      random,
+    );
   }
 
   private async findVerifiedResult(

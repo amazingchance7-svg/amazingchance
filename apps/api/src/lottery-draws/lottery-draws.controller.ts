@@ -21,6 +21,7 @@ import {
 import type { Response } from 'express';
 
 import { PublicRandomnessVerificationService } from '../randomness/public-randomness-verification.service';
+import { PublicWinnerSelectionVerificationService } from '../winners/public-winner-selection-verification.service';
 import { VerifyMerkleProofDto } from '../snapshots/dto/verify-merkle-proof.dto';
 import { PublicAuditService } from '../snapshots/public-audit.service';
 import { PublicProofService } from '../snapshots/public-proof.service';
@@ -41,6 +42,7 @@ export class LotteryDrawsController {
     private readonly publicAuditService: PublicAuditService,
     private readonly publicDrawResultService: PublicDrawResultService,
     private readonly publicRandomnessVerificationService: PublicRandomnessVerificationService,
+    private readonly publicWinnerSelectionVerificationService: PublicWinnerSelectionVerificationService,
   ) {}
 
   @Get()
@@ -113,6 +115,34 @@ export class LotteryDrawsController {
     );
   }
 
+  @Get(':id/winner-selection')
+  @ApiOperation({
+    summary:
+      'Independently recompute and verify the published winner selection',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Winner selection recomputation and integrity checks returned successfully.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Winner-selection evidence is internally inconsistent.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Published draw or required winner-selection evidence was not found.',
+  })
+  findWinnerSelectionVerification(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.publicWinnerSelectionVerificationService.findVerification(
+      id,
+    );
+  }
   @Get(':id/audit')
   @ApiOperation({
     summary:
