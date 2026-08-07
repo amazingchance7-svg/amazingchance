@@ -6,6 +6,7 @@ export const Permissions = {
   DRAW_CLOSE_SALES: 'draw.close_sales',
   DRAW_BUILD_SNAPSHOT: 'draw.build_snapshot',
   DRAW_FINALIZE_SNAPSHOT: 'draw.finalize_snapshot',
+  DRAW_SELECT_WINNERS: 'draw.select_winners',
   DRAW_CANCEL: 'draw.cancel',
   DRAW_PUBLISH: 'draw.publish',
 } as const;

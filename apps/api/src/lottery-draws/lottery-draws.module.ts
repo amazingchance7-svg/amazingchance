@@ -4,6 +4,7 @@ import { AuthorizationModule } from '../authorization/authorization.module';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SnapshotsModule } from '../snapshots/snapshots.module';
+import { WinnerSelectionModule } from '../winners/winner-selection.module';
 import { AdminLotteryDrawsController } from './admin-lottery-draws.controller';
 import { LotteryDrawsController } from './lottery-draws.controller';
 import { LotteryDrawsService } from './lottery-draws.service';
@@ -14,6 +15,7 @@ import { LotteryDrawsService } from './lottery-draws.service';
     AuthModule,
     AuthorizationModule,
     SnapshotsModule,
+    WinnerSelectionModule,
   ],
   controllers: [
     LotteryDrawsController,
