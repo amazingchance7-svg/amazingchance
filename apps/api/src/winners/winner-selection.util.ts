@@ -8,6 +8,9 @@ import type {
   WinnerPositionSelectionResult,
 } from './winner-selection.types';
 
+export const WINNER_SELECTION_ALGORITHM =
+  'FIRST_UNIQUE_VERIFIED_RANDOM_POSITIONS_IN_PROVIDER_ORDER_V1';
+
 const POSITIVE_INTEGER_PATTERN =
   /^[1-9]\d*$/;
 

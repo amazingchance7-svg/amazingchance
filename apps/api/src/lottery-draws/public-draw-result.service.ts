@@ -73,6 +73,7 @@ export interface PublicDrawResultResponse {
     ticketProofTemplate: string;
     proofVerification: string;
     randomnessEvidence: string;
+    winnerSelectionVerification: string;
   };
 }
 
@@ -335,6 +336,8 @@ export class PublicDrawResultService {
           `${basePath}/verify-proof`,
         randomnessEvidence:
           `${basePath}/randomness`,
+        winnerSelectionVerification:
+          `${basePath}/winner-selection`,
       },
     };
   }
