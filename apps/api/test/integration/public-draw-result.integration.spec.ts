@@ -486,6 +486,8 @@ describe('Public draw result integration', () => {
         `/lottery-draws/${scenario.draw.id}/tickets/{ticketPublicId}/proof`,
       proofVerification:
         `/lottery-draws/${scenario.draw.id}/verify-proof`,
+      randomnessEvidence:
+        `/lottery-draws/${scenario.draw.id}/randomness`,
     });
   });
 
