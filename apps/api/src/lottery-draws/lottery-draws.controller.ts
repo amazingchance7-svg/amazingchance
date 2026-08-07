@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 
+import { PublicRandomnessVerificationService } from '../randomness/public-randomness-verification.service';
 import { VerifyMerkleProofDto } from '../snapshots/dto/verify-merkle-proof.dto';
 import { PublicAuditService } from '../snapshots/public-audit.service';
 import { PublicProofService } from '../snapshots/public-proof.service';
@@ -39,6 +40,7 @@ export class LotteryDrawsController {
     private readonly publicVerificationService: PublicVerificationService,
     private readonly publicAuditService: PublicAuditService,
     private readonly publicDrawResultService: PublicDrawResultService,
+    private readonly publicRandomnessVerificationService: PublicRandomnessVerificationService,
   ) {}
 
   @Get()
@@ -78,6 +80,35 @@ export class LotteryDrawsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.publicDrawResultService.findPublishedByDrawId(
+      id,
+    );
+  }
+
+  @Get(':id/randomness')
+  @ApiOperation({
+    summary:
+      'Get the signed public randomness evidence bundle',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Lottery draw UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Signed randomness evidence and local integrity checks returned successfully.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Stored randomness evidence is structurally inconsistent.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Published draw or verified randomness evidence was not found.',
+  })
+  findRandomnessEvidence(
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.publicRandomnessVerificationService.findEvidence(
       id,
     );
   }
