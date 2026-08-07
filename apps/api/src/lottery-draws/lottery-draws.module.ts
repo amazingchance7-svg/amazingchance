@@ -8,6 +8,7 @@ import { WinnerSelectionModule } from '../winners/winner-selection.module';
 import { AdminLotteryDrawsController } from './admin-lottery-draws.controller';
 import { LotteryDrawsController } from './lottery-draws.controller';
 import { LotteryDrawsService } from './lottery-draws.service';
+import { PublicDrawResultService } from './public-draw-result.service';
 
 @Module({
   imports: [
@@ -21,7 +22,13 @@ import { LotteryDrawsService } from './lottery-draws.service';
     LotteryDrawsController,
     AdminLotteryDrawsController,
   ],
-  providers: [LotteryDrawsService],
-  exports: [LotteryDrawsService],
+  providers: [
+    LotteryDrawsService,
+    PublicDrawResultService,
+  ],
+  exports: [
+    LotteryDrawsService,
+    PublicDrawResultService,
+  ],
 })
 export class LotteryDrawsModule {}
