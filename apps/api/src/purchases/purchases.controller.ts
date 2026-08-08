@@ -26,6 +26,7 @@ import {
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { RequestContextRequest } from '../common/types/request-context.type';
+import { StripePaymentIntentService } from '../payments/stripe-payment-intent.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { PurchasesService } from './purchases.service';
 
@@ -44,6 +45,8 @@ export class PurchasesController {
   constructor(
     private readonly purchasesService:
       PurchasesService,
+    private readonly stripePaymentIntentService:
+      StripePaymentIntentService,
   ) {}
 
   @Post()
@@ -85,6 +88,49 @@ export class PurchasesController {
       dto,
       idempotencyKey,
     );
+  }
+
+  @Post(':id/payment-intent')
+  @ApiOperation({
+    summary:
+      'Create or resume the Stripe PaymentIntent for a purchase',
+  })
+  @ApiParam({
+    name: 'id',
+    description:
+      'Purchase UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Stripe PaymentIntent created or resumed successfully.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Purchase cannot currently start or resume a Stripe payment.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Purchase not found.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication required.',
+  })
+  initiateStripePayment(
+    @Req() request:
+      AuthenticatedRequest,
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+  ) {
+    return this
+      .stripePaymentIntentService
+      .initiate(
+        request.user.id,
+        id,
+      );
   }
 
   @Get('my')

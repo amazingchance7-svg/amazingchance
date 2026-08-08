@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   DrawStatus,
+  PaymentStatus,
   Prisma,
   Purchase,
   PurchaseStatus,
@@ -239,6 +240,15 @@ export class PurchasesService {
           id,
           userId,
         },
+        include: {
+          payments: {
+            select: {
+              status: true,
+              providerTransactionId:
+                true,
+            },
+          },
+        },
       });
 
     if (!purchase) {
@@ -255,6 +265,25 @@ export class PurchasesService {
     ) {
       throw new ConflictException(
         'Only unpaid purchases can be cancelled',
+      );
+    }
+
+    const hasActiveProviderPayment =
+      purchase.payments.some(
+        (payment) =>
+          payment.providerTransactionId !==
+            null &&
+          (
+            payment.status ===
+              PaymentStatus.CREATED ||
+            payment.status ===
+              PaymentStatus.PENDING
+          ),
+      );
+
+    if (hasActiveProviderPayment) {
+      throw new ConflictException(
+        'Purchase has an active provider payment and cannot be cancelled until that payment is resolved',
       );
     }
 
