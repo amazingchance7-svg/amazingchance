@@ -1,12 +1,16 @@
 import {
   DrawStatus,
   DrawType,
+  LedgerAccountCode,
+  LedgerSide,
+  LedgerTransactionType,
   PaymentStatus,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
+import { FinancialAllocationService } from '../../src/finance/financial-allocation.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { PaymentOrchestratorService } from '../../src/payments/payment-orchestrator.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -21,16 +25,41 @@ describe('Verified payment orchestration integration', () => {
   let service: PaymentOrchestratorService;
 
   beforeAll(async () => {
-    prisma = await createTestPrisma();
-    service = new PaymentOrchestratorService(
-      prisma,
-      new LedgerService(prisma),
-      new TicketAllocationService(),
-    );
+    prisma =
+      await createTestPrisma();
+
+    service =
+      new PaymentOrchestratorService(
+        prisma,
+        new LedgerService(prisma),
+        new TicketAllocationService(),
+        new FinancialAllocationService(
+          prisma,
+        ),
+      );
   });
 
   beforeEach(async () => {
-    await cleanTestDatabase(prisma);
+    await cleanTestDatabase(
+      prisma,
+    );
+
+    await prisma.allocationRule.create({
+      data: {
+        version:
+          1,
+        weeklyJackpotBps:
+          7000,
+        annualJackpotBps:
+          1000,
+        companyRevenueBps:
+          2000,
+        effectiveFrom:
+          new Date(
+            '2026-01-01T00:00:00.000Z',
+          ),
+      },
+    });
   });
 
   afterAll(async () => {
@@ -40,64 +69,117 @@ describe('Verified payment orchestration integration', () => {
   async function scenario(
     ticketCount = 3,
     options?: {
-      purchaseStatus?: PurchaseStatus;
-      paymentStatus?: PaymentStatus;
-      drawStatus?: DrawStatus;
-      paymentAmountMinor?: bigint;
-      paymentCurrency?: string;
+      purchaseStatus?:
+        PurchaseStatus;
+      paymentStatus?:
+        PaymentStatus;
+      drawStatus?:
+        DrawStatus;
+      paymentAmountMinor?:
+        bigint;
+      paymentCurrency?:
+        string;
     },
   ) {
-    const user = await prisma.user.create({
-      data: {
-        email: `${randomUUID()}@example.com`,
-        passwordHash: 'hash',
-        status: UserStatus.ACTIVE,
-        emailVerifiedAt: new Date(),
-      },
-    });
+    const user =
+      await prisma.user.create({
+        data: {
+          email:
+            `${randomUUID()}@example.com`,
+          passwordHash:
+            'hash',
+          status:
+            UserStatus.ACTIVE,
+          emailVerifiedAt:
+            new Date(),
+        },
+      });
 
-    const draw = await prisma.lotteryDraw.create({
-      data: {
-        publicId: `W-2026-${randomUUID()}`,
-        type: DrawType.WEEKLY,
-        status: options?.drawStatus ?? DrawStatus.SALES_OPEN,
-        sequenceNumber: Math.floor(Math.random() * 1_000_000),
-        scheduledDrawAt: new Date(Date.now() + 86_400_000),
-        currency: 'USD',
-        ticketPriceMinor: 100n,
-      },
-    });
+    const draw =
+      await prisma.lotteryDraw.create({
+        data: {
+          publicId:
+            `W-2026-${randomUUID()}`,
+          type:
+            DrawType.WEEKLY,
+          status:
+            options?.drawStatus ??
+            DrawStatus.SALES_OPEN,
+          sequenceNumber:
+            Math.floor(
+              Math.random() *
+                1_000_000,
+            ),
+          scheduledDrawAt:
+            new Date(
+              Date.now() +
+                86_400_000,
+            ),
+          currency:
+            'USD',
+          ticketPriceMinor:
+            100n,
+        },
+      });
 
-    const purchase = await prisma.purchase.create({
-      data: {
-        publicId: `PUR-${randomUUID()}`,
-        userId: user.id,
-        drawId: draw.id,
-        status:
-          options?.purchaseStatus ?? PurchaseStatus.PAYMENT_PENDING,
-        requestedTicketCount: ticketCount,
-        ticketPriceMinor: 100n,
-        totalAmountMinor: BigInt(ticketCount) * 100n,
-        currency: 'USD',
-        idempotencyKey: randomUUID(),
-      },
-    });
+    const purchase =
+      await prisma.purchase.create({
+        data: {
+          publicId:
+            `PUR-${randomUUID()}`,
+          userId:
+            user.id,
+          drawId:
+            draw.id,
+          status:
+            options?.purchaseStatus ??
+            PurchaseStatus.PAYMENT_PENDING,
+          requestedTicketCount:
+            ticketCount,
+          ticketPriceMinor:
+            100n,
+          totalAmountMinor:
+            BigInt(ticketCount) *
+            100n,
+          currency:
+            'USD',
+          idempotencyKey:
+            randomUUID(),
+        },
+      });
 
-    const payment = await prisma.payment.create({
-      data: {
-        purchaseId: purchase.id,
-        provider: 'TEST',
-        providerTransactionId: randomUUID(),
-        status: options?.paymentStatus ?? PaymentStatus.SUCCEEDED,
-        amountMinor:
-          options?.paymentAmountMinor ??
-          BigInt(ticketCount) * 100n,
-        currency: options?.paymentCurrency ?? 'USD',
-        confirmedAt: new Date(),
-      },
-    });
+    const payment =
+      await prisma.payment.create({
+        data: {
+          purchaseId:
+            purchase.id,
+          provider:
+            'TEST',
+          providerTransactionId:
+            randomUUID(),
+          status:
+            options?.paymentStatus ??
+            PaymentStatus.SUCCEEDED,
+          amountMinor:
+            options
+              ?.paymentAmountMinor ??
+            BigInt(ticketCount) *
+              100n,
+          currency:
+            options
+              ?.paymentCurrency ??
+            'USD',
+          confirmedAt:
+            new Date(),
+        },
+      });
 
-    return { user, draw, purchase, payment };
+    return {
+      user,
+      draw,
+      purchase,
+      payment,
+    };
   }
 
   async function expectNoOrchestrationSideEffects(
@@ -106,206 +188,505 @@ describe('Verified payment orchestration integration', () => {
     expect(
       (
         await prisma.purchase.findUniqueOrThrow({
-          where: { id: purchaseId },
+          where: {
+            id:
+              purchaseId,
+          },
         })
       ).status,
-    ).not.toBe(PurchaseStatus.COMPLETED);
+    ).not.toBe(
+      PurchaseStatus.COMPLETED,
+    );
 
-    expect(await prisma.ledgerTransaction.count()).toBe(0);
-    expect(await prisma.ticketAllocation.count()).toBe(0);
-    expect(await prisma.ticket.count()).toBe(0);
-    expect(await prisma.purchaseStateEvent.count()).toBe(0);
+    expect(
+      await prisma.ledgerTransaction.count(),
+    ).toBe(0);
+
+    expect(
+      await prisma.ticketAllocation.count(),
+    ).toBe(0);
+
+    expect(
+      await prisma.ticket.count(),
+    ).toBe(0);
+
+    expect(
+      await prisma.purchaseStateEvent.count(),
+    ).toBe(0);
   }
 
-  it('commits ledger, purchase, allocation and tickets atomically', async () => {
-    const s = await scenario(3);
+  it('commits payment ledger, allocation ledger, purchase, allocation and tickets atomically', async () => {
+    const s =
+      await scenario(3);
 
-    const result = await service.confirmPayment(s.payment.id);
+    const result =
+      await service.confirmPayment(
+        s.payment.id,
+      );
 
-    expect(result.ticketCount).toBe(3);
+    expect(
+      result.ticketCount,
+    ).toBe(3);
+
+    expect(
+      result.allocationRuleVersion,
+    ).toBe(1);
+
     expect(
       (
         await prisma.purchase.findUniqueOrThrow({
-          where: { id: s.purchase.id },
+          where: {
+            id:
+              s.purchase.id,
+          },
         })
       ).status,
-    ).toBe(PurchaseStatus.COMPLETED);
-    expect(await prisma.ledgerTransaction.count()).toBe(1);
-    expect(await prisma.ticketAllocation.count()).toBe(1);
-    expect(await prisma.purchaseStateEvent.count()).toBe(1);
-
-    const tickets = await prisma.ticket.findMany({
-      where: { purchaseId: s.purchase.id },
-      orderBy: { numberInDraw: 'asc' },
-    });
+    ).toBe(
+      PurchaseStatus.COMPLETED,
+    );
 
     expect(
-      tickets.map((ticket) => ticket.numberInDraw.toString()),
-    ).toEqual(['1', '2', '3']);
+      await prisma.ledgerTransaction.count(),
+    ).toBe(2);
+
+    expect(
+      await prisma.ticketAllocation.count(),
+    ).toBe(1);
+
+    expect(
+      await prisma.purchaseStateEvent.count(),
+    ).toBe(1);
+
+    const ledgerTransactions =
+      await prisma.ledgerTransaction.findMany({
+        where: {
+          referenceType:
+            'PAYMENT',
+          referenceId:
+            s.payment.id,
+        },
+        include: {
+          postings: true,
+        },
+        orderBy: {
+          createdAt:
+            'asc',
+        },
+      });
+
+    expect(
+      ledgerTransactions,
+    ).toHaveLength(2);
+
+    const paymentLedger =
+      ledgerTransactions.find(
+        (transaction) =>
+          transaction.type ===
+          LedgerTransactionType.PAYMENT_CONFIRMED,
+      );
+
+    const allocationLedger =
+      ledgerTransactions.find(
+        (transaction) =>
+          transaction.type ===
+          LedgerTransactionType.PAYMENT_ALLOCATION,
+      );
+
+    expect(
+      paymentLedger,
+    ).toBeDefined();
+
+    expect(
+      allocationLedger,
+    ).toBeDefined();
+
+    expect(
+      paymentLedger?.postings,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.CASH,
+          side:
+            LedgerSide.DEBIT,
+          amountMinor:
+            300n,
+        }),
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.PAYMENT_CLEARING,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            300n,
+        }),
+      ]),
+    );
+
+    expect(
+      allocationLedger?.postings,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.PAYMENT_CLEARING,
+          side:
+            LedgerSide.DEBIT,
+          amountMinor:
+            300n,
+        }),
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.WEEKLY_JACKPOT,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            210n,
+        }),
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.ANNUAL_JACKPOT,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            30n,
+        }),
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.COMPANY_REVENUE,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            60n,
+        }),
+      ]),
+    );
+
+    expect(
+      allocationLedger?.metadata,
+    ).toMatchObject({
+      allocationRuleVersion:
+        1,
+      weeklyJackpotBps:
+        7000,
+      annualJackpotBps:
+        1000,
+      companyRevenueBps:
+        2000,
+      weeklyJackpotMinor:
+        '210',
+      annualJackpotMinor:
+        '30',
+      companyRevenueMinor:
+        '60',
+    });
+
+    const tickets =
+      await prisma.ticket.findMany({
+        where: {
+          purchaseId:
+            s.purchase.id,
+        },
+        orderBy: {
+          numberInDraw:
+            'asc',
+        },
+      });
+
+    expect(
+      tickets.map(
+        (ticket) =>
+          ticket.numberInDraw.toString(),
+      ),
+    ).toEqual([
+      '1',
+      '2',
+      '3',
+    ]);
   });
 
   it('is idempotent for a repeated confirmation', async () => {
-    const s = await scenario(2);
+    const s =
+      await scenario(2);
 
-    const first = await service.confirmPayment(s.payment.id);
-    const second = await service.confirmPayment(s.payment.id);
+    const first =
+      await service.confirmPayment(
+        s.payment.id,
+      );
 
-    expect(second.alreadyProcessed).toBe(true);
-    expect(second.ledgerTransactionId).toBe(
+    const second =
+      await service.confirmPayment(
+        s.payment.id,
+      );
+
+    expect(
+      second.alreadyProcessed,
+    ).toBe(true);
+
+    expect(
+      second.ledgerTransactionId,
+    ).toBe(
       first.ledgerTransactionId,
     );
-    expect(await prisma.ledgerTransaction.count()).toBe(1);
-    expect(await prisma.ticketAllocation.count()).toBe(1);
-    expect(await prisma.ticket.count()).toBe(2);
-    expect(await prisma.purchaseStateEvent.count()).toBe(1);
+
+    expect(
+      second.allocationLedgerTransactionId,
+    ).toBe(
+      first.allocationLedgerTransactionId,
+    );
+
+    expect(
+      await prisma.ledgerTransaction.count(),
+    ).toBe(2);
+
+    expect(
+      await prisma.ticketAllocation.count(),
+    ).toBe(1);
+
+    expect(
+      await prisma.ticket.count(),
+    ).toBe(2);
+
+    expect(
+      await prisma.purchaseStateEvent.count(),
+    ).toBe(1);
   });
 
   it('is safe for concurrent repeated confirmations', async () => {
-    const s = await scenario(4);
+    const s =
+      await scenario(4);
 
-    const results = await Promise.all([
-      service.confirmPayment(s.payment.id),
-      service.confirmPayment(s.payment.id),
-    ]);
+    const results =
+      await Promise.all([
+        service.confirmPayment(
+          s.payment.id,
+        ),
+        service.confirmPayment(
+          s.payment.id,
+        ),
+      ]);
 
-    expect(results[0].ledgerTransactionId).toBe(
+    expect(
+      results[0].ledgerTransactionId,
+    ).toBe(
       results[1].ledgerTransactionId,
     );
-    expect(await prisma.ledgerTransaction.count()).toBe(1);
-    expect(await prisma.ticketAllocation.count()).toBe(1);
-    expect(await prisma.ticket.count()).toBe(4);
-    expect(await prisma.purchaseStateEvent.count()).toBe(1);
+
     expect(
-      (
-        await prisma.purchase.findUniqueOrThrow({
-          where: { id: s.purchase.id },
-        })
-      ).status,
-    ).toBe(PurchaseStatus.COMPLETED);
+      results[0]
+        .allocationLedgerTransactionId,
+    ).toBe(
+      results[1]
+        .allocationLedgerTransactionId,
+    );
+
+    expect(
+      await prisma.ledgerTransaction.count(),
+    ).toBe(2);
+
+    expect(
+      await prisma.ticketAllocation.count(),
+    ).toBe(1);
+
+    expect(
+      await prisma.ticket.count(),
+    ).toBe(4);
+
+    expect(
+      await prisma.purchaseStateEvent.count(),
+    ).toBe(1);
   });
 
-  it('rolls back ledger and allocation when ticket issuance fails', async () => {
-    const s = await scenario(1);
+  it('rolls back both ledger transactions and allocation when ticket issuance fails', async () => {
+    const s =
+      await scenario(1);
 
     await prisma.ticket.create({
       data: {
-        publicId: `TKT-${randomUUID()}`,
-        userId: s.user.id,
-        purchaseId: s.purchase.id,
-        drawId: s.draw.id,
-        numberInDraw: 1n,
+        publicId:
+          `TKT-${randomUUID()}`,
+        userId:
+          s.user.id,
+        purchaseId:
+          s.purchase.id,
+        drawId:
+          s.draw.id,
+        numberInDraw:
+          1n,
       },
     });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow();
 
     expect(
       (
         await prisma.purchase.findUniqueOrThrow({
-          where: { id: s.purchase.id },
+          where: {
+            id:
+              s.purchase.id,
+          },
         })
       ).status,
-    ).toBe(PurchaseStatus.PAYMENT_PENDING);
-    expect(await prisma.ledgerTransaction.count()).toBe(0);
-    expect(await prisma.ticketAllocation.count()).toBe(0);
-    expect(await prisma.ticket.count()).toBe(1);
-    expect(await prisma.purchaseStateEvent.count()).toBe(0);
+    ).toBe(
+      PurchaseStatus.PAYMENT_PENDING,
+    );
+
+    expect(
+      await prisma.ledgerTransaction.count(),
+    ).toBe(0);
+
+    expect(
+      await prisma.ticketAllocation.count(),
+    ).toBe(0);
+
+    expect(
+      await prisma.ticket.count(),
+    ).toBe(1);
+
+    expect(
+      await prisma.purchaseStateEvent.count(),
+    ).toBe(0);
   });
 
   it('rejects a non-succeeded payment without side effects', async () => {
-    const s = await scenario(1, {
-      paymentStatus: PaymentStatus.PENDING,
-    });
+    const s =
+      await scenario(1, {
+        paymentStatus:
+          PaymentStatus.PENDING,
+      });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow(
       'Only a succeeded payment can be confirmed',
     );
 
-    await expectNoOrchestrationSideEffects(s.purchase.id);
+    await expectNoOrchestrationSideEffects(
+      s.purchase.id,
+    );
   });
 
   it('rejects an invalid purchase state without side effects', async () => {
-    const s = await scenario(1, {
-      purchaseStatus: PurchaseStatus.PAYMENT_FAILED,
-    });
+    const s =
+      await scenario(1, {
+        purchaseStatus:
+          PurchaseStatus.PAYMENT_FAILED,
+      });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow(
       `Purchase in ${PurchaseStatus.PAYMENT_FAILED} cannot be completed`,
     );
 
-    await expectNoOrchestrationSideEffects(s.purchase.id);
+    await expectNoOrchestrationSideEffects(
+      s.purchase.id,
+    );
   });
 
   it('rejects a closed draw without side effects', async () => {
-    const s = await scenario(1, {
-      drawStatus: DrawStatus.SALES_CLOSED,
-    });
+    const s =
+      await scenario(1, {
+        drawStatus:
+          DrawStatus.SALES_CLOSED,
+      });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow(
       `Tickets cannot be issued for a draw in ${DrawStatus.SALES_CLOSED}`,
     );
 
-    await expectNoOrchestrationSideEffects(s.purchase.id);
+    await expectNoOrchestrationSideEffects(
+      s.purchase.id,
+    );
   });
 
   it('rejects a cancelled draw without side effects', async () => {
-    const s = await scenario(1, {
-      drawStatus: DrawStatus.CANCELLED,
-    });
+    const s =
+      await scenario(1, {
+        drawStatus:
+          DrawStatus.CANCELLED,
+      });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow(
       `Tickets cannot be issued for a draw in ${DrawStatus.CANCELLED}`,
     );
 
-    await expectNoOrchestrationSideEffects(s.purchase.id);
+    await expectNoOrchestrationSideEffects(
+      s.purchase.id,
+    );
   });
 
   it('rejects a payment amount mismatch without side effects', async () => {
-    const s = await scenario(2, {
-      paymentAmountMinor: 199n,
-    });
+    const s =
+      await scenario(2, {
+        paymentAmountMinor:
+          199n,
+      });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow(
       'Payment amount or currency does not match the purchase',
     );
 
-    await expectNoOrchestrationSideEffects(s.purchase.id);
+    await expectNoOrchestrationSideEffects(
+      s.purchase.id,
+    );
   });
 
   it('rejects a payment currency mismatch without side effects', async () => {
-    const s = await scenario(2, {
-      paymentCurrency: 'EUR',
-    });
+    const s =
+      await scenario(2, {
+        paymentCurrency:
+          'EUR',
+      });
 
     await expect(
-      service.confirmPayment(s.payment.id),
+      service.confirmPayment(
+        s.payment.id,
+      ),
     ).rejects.toThrow(
       'Payment amount or currency does not match the purchase',
     );
 
-    await expectNoOrchestrationSideEffects(s.purchase.id);
+    await expectNoOrchestrationSideEffects(
+      s.purchase.id,
+    );
   });
 
   it('prevents corruption of a completed purchase by deleting a ticket', async () => {
-    const s = await scenario(2);
+    const s =
+      await scenario(2);
 
-    await service.confirmPayment(s.payment.id);
+    await service.confirmPayment(
+      s.payment.id,
+    );
 
-    const ticket = await prisma.ticket.findFirstOrThrow({
-      where: { purchaseId: s.purchase.id },
-    });
+    const ticket =
+      await prisma.ticket.findFirstOrThrow({
+        where: {
+          purchaseId:
+            s.purchase.id,
+        },
+      });
 
     await expect(
       prisma.$executeRaw`
@@ -318,13 +699,24 @@ describe('Verified payment orchestration integration', () => {
 
     expect(
       await prisma.ticket.count({
-        where: { purchaseId: s.purchase.id },
+        where: {
+          purchaseId:
+            s.purchase.id,
+        },
       }),
     ).toBe(2);
 
-    const result = await service.confirmPayment(s.payment.id);
+    const result =
+      await service.confirmPayment(
+        s.payment.id,
+      );
 
-    expect(result.alreadyProcessed).toBe(true);
-    expect(result.ticketCount).toBe(2);
+    expect(
+      result.alreadyProcessed,
+    ).toBe(true);
+
+    expect(
+      result.ticketCount,
+    ).toBe(2);
   });
 });
