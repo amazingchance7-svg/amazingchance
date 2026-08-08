@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUrl,
   Max,
@@ -43,9 +44,13 @@ class EnvironmentVariables {
 
   @IsUrl({
     require_tld: false,
-    protocols: ['http', 'https'],
+    protocols: [
+      'http',
+      'https',
+    ],
   })
-  WEB_URL = 'http://localhost:3000';
+  WEB_URL =
+    'http://localhost:3000';
 
   @IsString()
   @IsNotEmpty()
@@ -55,7 +60,8 @@ class EnvironmentVariables {
   @Type(() => Number)
   @IsInt()
   @Min(60)
-  JWT_ACCESS_TTL_SECONDS = 900;
+  JWT_ACCESS_TTL_SECONDS =
+    900;
 
   @IsString()
   @IsNotEmpty()
@@ -65,44 +71,69 @@ class EnvironmentVariables {
   @Type(() => Number)
   @IsInt()
   @Min(3600)
-  JWT_REFRESH_TTL_SECONDS = 2_592_000;
+  JWT_REFRESH_TTL_SECONDS =
+    2_592_000;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(32)
   SNAPSHOT_OWNER_SECRET!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  STRIPE_SECRET_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 export function validateEnvironment(
-  config: Record<string, unknown>,
+  config: Record<
+    string,
+    unknown
+  >,
 ): EnvironmentVariables {
-  const validatedConfig = plainToInstance(
-    EnvironmentVariables,
-    config,
-    {
-      enableImplicitConversion: true,
-    },
-  );
+  const validatedConfig =
+    plainToInstance(
+      EnvironmentVariables,
+      config,
+      {
+        enableImplicitConversion:
+          true,
+      },
+    );
 
-  const errors = validateSync(
-    validatedConfig,
-    {
-      skipMissingProperties: false,
-      whitelist: true,
-    },
-  );
+  const errors =
+    validateSync(
+      validatedConfig,
+      {
+        skipMissingProperties:
+          false,
+        whitelist:
+          true,
+      },
+    );
 
-  if (errors.length > 0) {
-    const messages = errors
-      .flatMap((error) =>
-        Object.values(
-          error.constraints ?? {},
-        ).map(
-          (message) =>
-            `${error.property}: ${message}`,
-        ),
-      )
-      .join('; ');
+  if (
+    errors.length >
+    0
+  ) {
+    const messages =
+      errors
+        .flatMap(
+          (error) =>
+            Object.values(
+              error.constraints ??
+                {},
+            ).map(
+              (message) =>
+                `${error.property}: ${message}`,
+            ),
+        )
+        .join('; ');
 
     throw new Error(
       `Environment validation failed: ${messages}`,
@@ -122,12 +153,27 @@ export function validateEnvironment(
     validatedConfig.NODE_ENV ===
       NodeEnvironment.Production &&
     (
-      typeof config.WEB_URL !== 'string' ||
-      config.WEB_URL.trim().length === 0
+      typeof config.WEB_URL !==
+        'string' ||
+      config.WEB_URL.trim()
+        .length === 0
     )
   ) {
     throw new Error(
       'Environment validation failed: WEB_URL is required in production',
+    );
+  }
+
+  if (
+    validatedConfig.NODE_ENV ===
+      NodeEnvironment.Production &&
+    (
+      !validatedConfig.STRIPE_SECRET_KEY ||
+      !validatedConfig.STRIPE_WEBHOOK_SECRET
+    )
+  ) {
+    throw new Error(
+      'Environment validation failed: STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production',
     );
   }
 
