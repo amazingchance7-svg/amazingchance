@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { PaymentOrchestratorService } from './payment-orchestrator.service';
 import { StripeClient } from './stripe.client';
+import { StripePaymentIntentService } from './stripe-payment-intent.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 import { StripeWebhookService } from './stripe-webhook.service';
 
@@ -24,10 +25,12 @@ import { StripeWebhookService } from './stripe-webhook.service';
   providers: [
     PaymentOrchestratorService,
     StripeClient,
+    StripePaymentIntentService,
     StripeWebhookService,
   ],
   exports: [
     PaymentOrchestratorService,
+    StripePaymentIntentService,
   ],
 })
 export class PaymentsModule {}
