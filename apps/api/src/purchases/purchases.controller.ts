@@ -27,6 +27,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { RequestContextRequest } from '../common/types/request-context.type';
 import { StripePaymentIntentService } from '../payments/stripe-payment-intent.service';
+import { TicketsQueryService } from '../tickets/tickets-query.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { PurchasesService } from './purchases.service';
 
@@ -47,6 +48,8 @@ export class PurchasesController {
       PurchasesService,
     private readonly stripePaymentIntentService:
       StripePaymentIntentService,
+    private readonly ticketsQueryService:
+      TicketsQueryService,
   ) {}
 
   @Post()
@@ -152,6 +155,45 @@ export class PurchasesController {
     return this.purchasesService.findMine(
       request.user.id,
     );
+  }
+
+  @Get(':id/tickets')
+  @ApiOperation({
+    summary:
+      'Get tickets issued for an authenticated user purchase',
+  })
+  @ApiParam({
+    name: 'id',
+    description:
+      'Purchase UUID',
+  })
+  @ApiOkResponse({
+    description:
+      'Issued tickets for the purchase were returned successfully.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Purchase not found.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication required.',
+  })
+  findTickets(
+    @Req() request:
+      AuthenticatedRequest,
+    @Param(
+      'id',
+      ParseUUIDPipe,
+    )
+    id: string,
+  ) {
+    return this
+      .ticketsQueryService
+      .findForPurchase(
+        request.user.id,
+        id,
+      );
   }
 
   @Get(':id')
