@@ -294,6 +294,7 @@ export default function AdminPage() {
         </Link>
 
         <nav className={styles.nav}>
+          <Link href="/admin/operations">Backoffice</Link>
           <Link href="/account">Account</Link>
           <Link href="/verify">Verification</Link>
         </nav>
