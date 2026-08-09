@@ -4,17 +4,28 @@ export default function HomePage() {
   return (
     <main>
       <section className="card">
-        <p className="eyebrow">Amazing Chance</p>
+        <p className="eyebrow">
+          Amazing Chance
+        </p>
 
         <h1>
-          Transparent lottery verification is available.
+          Transparent lottery.
+          Verifiable outcomes.
         </h1>
 
         <p>
-          Review finalized draw commitments, download the
-          canonical snapshot and independently verify that
-          a ticket was included in the official draw.
+          Buy tickets through the
+          secure checkout or review
+          finalized draw commitments,
+          canonical snapshots and
+          independent Merkle proofs.
         </p>
+
+        <Link href="/checkout">
+          Buy tickets
+        </Link>
+
+        <br />
 
         <Link href="/verify">
           Open verification portal
