@@ -174,7 +174,8 @@ export default function OperationsBackofficePage() {
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const [notice, setNotice] = useState<string | null>(null);
+  const [controlKey, setControlKey] = useState<string | null>(null);
   async function loadBackoffice() {
     setLoading(true);
     setError(null);
@@ -303,6 +304,84 @@ export default function OperationsBackofficePage() {
     setError(null);
   }
 
+  async function runPurchaseControl(
+    purchase: PurchaseRow,
+    action: 'manual-review' | 'cancel-manual-review',
+  ) {
+    const label =
+      action === 'manual-review'
+        ? 'Move to manual review'
+        : 'Cancel unpaid purchase';
+
+    if (
+      action === 'cancel-manual-review' &&
+      !window.confirm(
+        `Confirm cancellation of ${purchase.publicId}? This control is only for unpaid MANUAL_REVIEW purchases.`,
+      )
+    ) {
+      return;
+    }
+
+    const reason = window.prompt(
+      `${label} вЂ” enter an operator reason (minimum 3 characters):`,
+    );
+
+    if (reason === null) {
+      return;
+    }
+
+    const normalizedReason = reason.trim();
+
+    if (normalizedReason.length < 3) {
+      setError('Operator reason must contain at least 3 characters.');
+      return;
+    }
+
+    const key = `${purchase.id}:${action}`;
+
+    setControlKey(key);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await fetch(
+        `/api/admin/operations/purchases/${encodeURIComponent(
+          purchase.id,
+        )}/action`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action,
+            reason: normalizedReason,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(
+            `Permission denied for "${label}". PLATFORM_ADMIN purchase-control permission is required.`,
+          );
+        }
+
+        throw new Error(await readMessage(response));
+      }
+
+      await loadBackoffice();
+      setNotice(`${label} completed for ${purchase.publicId}.`);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Purchase control failed.',
+      );
+    } finally {
+      setControlKey(null);
+    }
+  }
   const reviewAttention = useMemo(
     () =>
       (overview?.purchases.manualReview ?? 0) +
@@ -328,7 +407,7 @@ export default function OperationsBackofficePage() {
         <p className={styles.eyebrow}>Platform administration</p>
         <h1>Operations backoffice</h1>
         <p className={styles.muted}>
-          Read-only operational view of users, purchases, issued tickets and
+          Operational view of users, purchases, issued tickets and
           aggregate payment activity. Cross-user access remains protected by
           backend PLATFORM_ADMIN permissions.
         </p>
@@ -541,6 +620,7 @@ export default function OperationsBackofficePage() {
                     <th>Amount</th>
                     <th>Tickets</th>
                     <th>Created</th>
+                  <th>Control</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -563,6 +643,55 @@ export default function OperationsBackofficePage() {
                         {row.ticketCount} / requested {row.requestedTicketCount}
                       </td>
                       <td>{formatDate(row.createdAt)}</td>
+                      <td>
+                        <div className={styles.purchaseControls}>
+                          {row.status === 'PAYMENT_PENDING' ||
+                          row.status === 'PAYMENT_FAILED' ? (
+                            <button
+                              type="button"
+                              className={styles.controlButton}
+                              disabled={controlKey !== null}
+                              onClick={() =>
+                                void runPurchaseControl(
+                                  row,
+                                  'manual-review',
+                                )
+                              }
+                            >
+                              {controlKey === `${row.id}:manual-review`
+                                ? 'Working...'
+                                : 'Manual review'}
+                            </button>
+                          ) : null}
+
+                          {row.status === 'MANUAL_REVIEW' ? (
+                            <button
+                              type="button"
+                              className={styles.dangerButton}
+                              disabled={controlKey !== null}
+                              onClick={() =>
+                                void runPurchaseControl(
+                                  row,
+                                  'cancel-manual-review',
+                                )
+                              }
+                            >
+                              {controlKey ===
+                              `${row.id}:cancel-manual-review`
+                                ? 'Working...'
+                                : 'Cancel unpaid'}
+                            </button>
+                          ) : null}
+
+                          {![
+                            'PAYMENT_PENDING',
+                            'PAYMENT_FAILED',
+                            'MANUAL_REVIEW',
+                          ].includes(row.status) ? (
+                            <span className={styles.muted}>вЂ”</span>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -615,9 +744,14 @@ export default function OperationsBackofficePage() {
           </section>
         </>
       )}
+    {notice ? (
+      <section className={styles.notice} role="status">
+        {notice}
+      </section>
+    ) : null}
 
-      {error ? (
-        <section className={styles.error} role="alert">
+    {error ? (
+      <section className={styles.error} role="alert">
           {error}
         </section>
       ) : null}
