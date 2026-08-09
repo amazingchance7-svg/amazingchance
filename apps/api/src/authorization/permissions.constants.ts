@@ -10,4 +10,8 @@ export const Permissions = {
   DRAW_SELECT_WINNERS: 'draw.select_winners',
   DRAW_CANCEL: 'draw.cancel',
   DRAW_PUBLISH: 'draw.publish',
+  USER_READ_ADMIN: 'user.read.admin',
+  PURCHASE_READ_ADMIN: 'purchase.read.admin',
+  TICKET_READ_ADMIN: 'ticket.read.admin',
+  FINANCE_READ_ADMIN: 'finance.read.admin',
 } as const;
