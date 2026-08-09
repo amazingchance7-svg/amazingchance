@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { TicketsModule } from '../tickets/tickets.module';
 import { PurchasesController } from './purchases.controller';
 import { PurchasesService } from './purchases.service';
 
@@ -11,6 +12,7 @@ import { PurchasesService } from './purchases.service';
     PrismaModule,
     AuthModule,
     PaymentsModule,
+    TicketsModule,
   ],
   controllers: [
     PurchasesController,
