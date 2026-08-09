@@ -15,14 +15,20 @@ export default function HomePage() {
 
         <p>
           Buy tickets through the
-          secure checkout or review
-          finalized draw commitments,
-          canonical snapshots and
-          independent Merkle proofs.
+          secure checkout, review
+          your account history or
+          inspect finalized draw
+          commitments and proofs.
         </p>
 
         <Link href="/checkout">
           Buy tickets
+        </Link>
+
+        <br />
+
+        <Link href="/account">
+          My account
         </Link>
 
         <br />
