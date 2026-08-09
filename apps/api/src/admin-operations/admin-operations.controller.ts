@@ -1,8 +1,13 @@
 import {
+  Body,
   Controller,
   Get,
+  Param,
   ParseIntPipe,
+  ParseUUIDPipe,
+  Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -16,6 +21,9 @@ import {
 } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { RequestContextRequest } from '../common/types/request-context.type';
+import { AdminPurchaseControlsService } from './admin-purchase-controls.service';
+import { AdminPurchaseReasonDto } from './dto/admin-purchase-reason.dto';
 import { Permissions } from '../authorization/permissions.constants';
 import { PermissionsGuard } from '../authorization/permissions.guard';
 import { RequirePermissions } from '../authorization/require-permissions.decorator';
@@ -28,6 +36,7 @@ import { AdminOperationsService } from './admin-operations.service';
 export class AdminOperationsController {
   constructor(
     private readonly adminOperationsService: AdminOperationsService,
+    private readonly adminPurchaseControlsService: AdminPurchaseControlsService,
   ) {}
 
   @Get('overview')
@@ -82,5 +91,33 @@ export class AdminOperationsController {
     limit?: number,
   ) {
     return this.adminOperationsService.tickets(limit);
+  }
+
+  @Post('purchases/:purchaseId/manual-review')
+  @RequirePermissions(Permissions.PURCHASE_REVIEW_ADMIN)
+  async markManualReview(
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+    @Body() dto: AdminPurchaseReasonDto,
+    @Req() request: RequestContextRequest,
+  ) {
+    return this.adminPurchaseControlsService.markManualReview(
+      purchaseId,
+      dto.reason,
+      request.user?.id ?? null,
+    );
+  }
+
+  @Post('purchases/:purchaseId/cancel-manual-review')
+  @RequirePermissions(Permissions.PURCHASE_CANCEL_ADMIN)
+  async cancelManualReview(
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+    @Body() dto: AdminPurchaseReasonDto,
+    @Req() request: RequestContextRequest,
+  ) {
+    return this.adminPurchaseControlsService.cancelManualReview(
+      purchaseId,
+      dto.reason,
+      request.user?.id ?? null,
+    );
   }
 }
