@@ -269,3 +269,39 @@
     width: 100%;
   }
 }
+
+.purchaseControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.controlButton,
+.dangerButton {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.controlButton {
+  border: 1px solid #4a5c91;
+  background: #18213a;
+  color: #dbe4ff;
+}
+
+.dangerButton {
+  border: 1px solid #764747;
+  background: #2a1717;
+  color: #ffc4c4;
+}
+
+.controlButton:disabled,
+.dangerButton:disabled {
+  opacity: .55;
+  cursor: wait;
+}
