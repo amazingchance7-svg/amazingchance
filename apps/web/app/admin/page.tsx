@@ -381,13 +381,16 @@ export default function AdminPage() {
                 <h2>Lottery draws</h2>
               </div>
 
-              <button
-                type="button"
-                className={styles.refreshButton}
-                onClick={() => void loadAdmin()}
-              >
-                Refresh
-              </button>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Link href="/admin/draws/new">Create draw</Link>
+                <button
+                  type="button"
+                  className={styles.refreshButton}
+                  onClick={() => void loadAdmin()}
+                >
+                  Refresh
+                </button>
+              </div>
             </div>
 
             {draws.length === 0 ? (
@@ -433,6 +436,9 @@ export default function AdminPage() {
                       </dl>
 
                       <div className={styles.actions}>
+                        <Link href={`/admin/draws/${encodeURIComponent(draw.id)}`}>
+                          Manage draw
+                        </Link>
                         {actions.length > 0 ? (
                           actions.map((definition) => {
                             const key = `${draw.id}:${definition.action}`;
