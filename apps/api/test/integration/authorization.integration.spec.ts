@@ -52,11 +52,16 @@ describe('Authorization foundation', () => {
     expect(customer.permissions).toHaveLength(0);
   });
 
-  it('never creates ticket, snapshot, randomness, or winner override permissions', async () => {
+  it('never creates ticket mutation, snapshot, randomness, or winner override permissions', async () => {
     const forbidden = await prisma.permission.findMany({
       where: {
         OR: [
-          { code: { startsWith: 'ticket.' } },
+          {
+            AND: [
+              { code: { startsWith: 'ticket.' } },
+              { code: { not: Permissions.TICKET_READ_ADMIN } },
+            ],
+          },
           { code: { startsWith: 'snapshot.' } },
           { code: { startsWith: 'randomness.' } },
           { code: { startsWith: 'winner.' } },
