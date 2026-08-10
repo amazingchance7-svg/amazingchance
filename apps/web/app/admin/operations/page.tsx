@@ -306,12 +306,15 @@ export default function OperationsBackofficePage() {
 
   async function runPurchaseControl(
     purchase: PurchaseRow,
-    action: 'manual-review' | 'cancel-manual-review',
+    action: 'manual-review' | 'cancel-manual-review' | 'refund',
   ) {
+
     const label =
       action === 'manual-review'
         ? 'Move to manual review'
-        : 'Cancel unpaid purchase';
+        : action === 'cancel-manual-review'
+          ? 'Cancel unpaid purchase'
+          : 'Request full refund';
 
     if (
       action === 'cancel-manual-review' &&
@@ -322,6 +325,14 @@ export default function OperationsBackofficePage() {
       return;
     }
 
+    if (
+      action === 'refund' &&
+      !window.confirm(
+        `Request a full Stripe refund for ${purchase.publicId}? The backend will only allow an eligible COMPLETED purchase before snapshot creation.`,
+      )
+    ) {
+      return;
+    }
     const reason = window.prompt(
       `${label} вЂ” enter an operator reason (minimum 3 characters):`,
     );
@@ -363,7 +374,7 @@ export default function OperationsBackofficePage() {
       if (!response.ok) {
         if (response.status === 403) {
           throw new Error(
-            `Permission denied for "${label}". PLATFORM_ADMIN purchase-control permission is required.`,
+            `Permission denied for "${label}". PLATFORM_ADMIN permission for this purchase action is required.`,
           );
         }
 
@@ -682,11 +693,40 @@ export default function OperationsBackofficePage() {
                                 : 'Cancel unpaid'}
                             </button>
                           ) : null}
+                          {row.status === 'COMPLETED' ? (
+                            <button
+                              type="button"
+                              className={styles.dangerButton}
+                              disabled={controlKey !== null}
+                              onClick={() =>
+                                void runPurchaseControl(row, 'refund')
+                              }
+                            >
+                              {controlKey === `${row.id}:refund`
+                                ? 'Requesting...'
+                                : 'Refund'}
+                            </button>
+                          ) : null}
+
+                          {row.status === 'REFUND_PENDING' ? (
+                            <span className={styles.muted}>
+                              Awaiting Stripe
+                            </span>
+                          ) : null}
+
+                          {row.status === 'REFUNDED' ? (
+                            <span className={styles.muted}>
+                              Refunded
+                            </span>
+                          ) : null}
 
                           {![
                             'PAYMENT_PENDING',
                             'PAYMENT_FAILED',
                             'MANUAL_REVIEW',
+                            'COMPLETED',
+                            'REFUND_PENDING',
+                            'REFUNDED',
                           ].includes(row.status) ? (
                             <span className={styles.muted}>вЂ”</span>
                           ) : null}
