@@ -5,11 +5,13 @@ import { authenticatedApiFetch } from '../../../../../../../lib/server-session';
 
 type PurchaseControlAction =
   | 'manual-review'
-  | 'cancel-manual-review';
+  | 'cancel-manual-review'
+  | 'refund';
 
 const ALLOWED_ACTIONS = new Set<PurchaseControlAction>([
   'manual-review',
   'cancel-manual-review',
+  'refund',
 ]);
 
 export async function POST(
