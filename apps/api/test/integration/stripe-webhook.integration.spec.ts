@@ -14,6 +14,7 @@ import { FinancialAllocationService } from '../../src/finance/financial-allocati
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { PaymentOrchestratorService } from '../../src/payments/payment-orchestrator.service';
 import { StripeClient } from '../../src/payments/stripe.client';
+import { StripeRefundService } from '../../src/payments/stripe-refund.service';
 import { StripeWebhookService } from '../../src/payments/stripe-webhook.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { TicketAllocationService } from '../../src/tickets/ticket-allocation.service';
@@ -49,10 +50,15 @@ describe('Stripe webhook pipeline integration', () => {
       new FinancialAllocationService(prisma),
     );
 
+    const refundService = {
+      processRefundEvent: jest.fn(),
+    } as unknown as StripeRefundService;
+
     service = new StripeWebhookService(
       prisma,
       new StripeClient(config),
       orchestrator,
+      refundService,
     );
   });
 

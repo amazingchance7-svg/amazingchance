@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { StripeRefundService } from '../payments/stripe-refund.service';
 import type { RequestContextRequest } from '../common/types/request-context.type';
 import { AdminPurchaseControlsService } from './admin-purchase-controls.service';
 import { AdminPurchaseReasonDto } from './dto/admin-purchase-reason.dto';
@@ -37,6 +38,7 @@ export class AdminOperationsController {
   constructor(
     private readonly adminOperationsService: AdminOperationsService,
     private readonly adminPurchaseControlsService: AdminPurchaseControlsService,
+    private readonly stripeRefundService: StripeRefundService,
   ) {}
 
   @Get('overview')
@@ -115,6 +117,20 @@ export class AdminOperationsController {
     @Req() request: RequestContextRequest,
   ) {
     return this.adminPurchaseControlsService.cancelManualReview(
+      purchaseId,
+      dto.reason,
+      request.user?.id ?? null,
+    );
+  }
+
+  @Post('purchases/:purchaseId/refund')
+  @RequirePermissions(Permissions.PURCHASE_REFUND_ADMIN)
+  refundPurchase(
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+    @Body() dto: AdminPurchaseReasonDto,
+    @Req() request: RequestContextRequest,
+  ) {
+    return this.stripeRefundService.requestFullRefund(
       purchaseId,
       dto.reason,
       request.user?.id ?? null,

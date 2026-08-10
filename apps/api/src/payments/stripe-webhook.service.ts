@@ -17,6 +17,7 @@ import type Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentOrchestratorService } from './payment-orchestrator.service';
 import { StripeClient } from './stripe.client';
+import { StripeRefundService } from './stripe-refund.service';
 
 const STRIPE_PROVIDER = 'STRIPE';
 
@@ -37,6 +38,8 @@ export class StripeWebhookService {
       StripeClient,
     private readonly paymentOrchestrator:
       PaymentOrchestratorService,
+    private readonly stripeRefundService:
+      StripeRefundService,
   ) {}
 
   async handle(
@@ -183,6 +186,19 @@ export class StripeWebhookService {
           event.data.object,
         );
 
+      case 'refund.created':
+      case 'refund.updated':
+      case 'refund.failed': {
+        const refundResult =
+          await this.stripeRefundService.processRefundEvent(
+            event.data.object as Stripe.Refund,
+          );
+
+        return {
+          paymentId: refundResult.paymentId,
+          ignored: false,
+        };
+      }
       default:
         return {
           paymentId:

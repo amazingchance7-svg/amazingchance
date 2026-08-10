@@ -8,6 +8,7 @@ import { TicketsModule } from '../tickets/tickets.module';
 import { PaymentOrchestratorService } from './payment-orchestrator.service';
 import { StripeClient } from './stripe.client';
 import { StripePaymentIntentService } from './stripe-payment-intent.service';
+import { StripeRefundService } from './stripe-refund.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 import { StripeWebhookService } from './stripe-webhook.service';
 
@@ -26,11 +27,13 @@ import { StripeWebhookService } from './stripe-webhook.service';
     PaymentOrchestratorService,
     StripeClient,
     StripePaymentIntentService,
+    StripeRefundService,
     StripeWebhookService,
   ],
   exports: [
     PaymentOrchestratorService,
     StripePaymentIntentService,
+    StripeRefundService,
   ],
 })
 export class PaymentsModule {}

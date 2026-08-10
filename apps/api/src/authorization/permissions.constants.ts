@@ -16,4 +16,5 @@ export const Permissions = {
   FINANCE_READ_ADMIN: 'finance.read.admin',
   PURCHASE_REVIEW_ADMIN: 'purchase.review.admin',
   PURCHASE_CANCEL_ADMIN: 'purchase.cancel.admin',
+  PURCHASE_REFUND_ADMIN: 'purchase.refund.admin',
 } as const;
