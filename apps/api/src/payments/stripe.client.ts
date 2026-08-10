@@ -6,6 +6,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 
+export type CreateStripeRefundInput = {
+  paymentIntentId: string;
+  paymentId: string;
+  purchaseId: string;
+  idempotencyKey: string;
+};
 export type CreateStripePaymentIntentInput = {
   amountMinor: number;
   currency: string;
@@ -67,6 +73,33 @@ export class StripeClient {
     );
   }
 
+  async createRefund(
+    input: CreateStripeRefundInput,
+  ): Promise<Stripe.Refund> {
+    const stripe = this.requireStripe();
+
+    return stripe.refunds.create(
+      {
+        payment_intent: input.paymentIntentId,
+        reason: 'requested_by_customer',
+        metadata: {
+          paymentId: input.paymentId,
+          purchaseId: input.purchaseId,
+        },
+      },
+      {
+        idempotencyKey: input.idempotencyKey,
+      },
+    );
+  }
+
+  async retrieveRefund(
+    refundId: string,
+  ): Promise<Stripe.Refund> {
+    const stripe = this.requireStripe();
+
+    return stripe.refunds.retrieve(refundId);
+  }
   async retrievePaymentIntent(
     paymentIntentId: string,
   ): Promise<Stripe.PaymentIntent> {

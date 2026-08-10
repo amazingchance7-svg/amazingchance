@@ -87,6 +87,29 @@ export class SnapshotBuilderService {
           );
         }
 
+        const unresolvedRefundPurchaseCount =
+          await tx.purchase.count({
+            where: {
+              drawId,
+              status: {
+                in: [
+                  'REFUND_PENDING',
+                  'MANUAL_REVIEW',
+                ],
+              },
+              tickets: {
+                some: {
+                  status: TicketStatus.ACTIVE,
+                },
+              },
+            },
+          });
+
+        if (unresolvedRefundPurchaseCount > 0) {
+          throw new ConflictException(
+            'Snapshot cannot be built while active tickets belong to unresolved refund or manual-review purchases',
+          );
+        }
         const tickets = await tx.ticket.findMany({
           where: {
             drawId,
