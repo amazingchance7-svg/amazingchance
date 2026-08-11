@@ -164,38 +164,47 @@ describe('Stripe refund pipeline', () => {
     } as unknown as Stripe.Refund;
   }
 
-  it('seeds purchase.refund.admin only for PLATFORM_ADMIN', async () => {
-    const platformAdmin =
-      await prisma.role.findUniqueOrThrow({
-        where: { code: 'PLATFORM_ADMIN' },
-        include: {
-          permissions: {
-            include: { permission: true },
-          },
+  it('seeds purchase.refund.admin only for BUSINESS_OWNER among privileged roles', async () => {
+    const roles = await prisma.role.findMany({
+      where: {
+        code: {
+          in: [
+            'BUSINESS_OWNER',
+            'PLATFORM_ADMIN',
+            'DRAW_OPERATOR',
+            'CUSTOMER',
+          ],
         },
-      });
+      },
+      include: {
+        permissions: {
+          include: { permission: true },
+        },
+      },
+    });
 
-    const customer =
-      await prisma.role.findUniqueOrThrow({
-        where: { code: 'CUSTOMER' },
-        include: {
-          permissions: {
-            include: { permission: true },
-          },
-        },
-      });
+    const codesByRole = new Map(
+      roles.map((role) => [
+        role.code,
+        role.permissions.map(
+          (entry) => entry.permission.code,
+        ),
+      ]),
+    );
 
     expect(
-      platformAdmin.permissions.map(
-        (entry) => entry.permission.code,
-      ),
+      codesByRole.get('BUSINESS_OWNER'),
     ).toContain(Permissions.PURCHASE_REFUND_ADMIN);
 
-    expect(
-      customer.permissions.map(
-        (entry) => entry.permission.code,
-      ),
-    ).not.toContain(Permissions.PURCHASE_REFUND_ADMIN);
+    for (const roleCode of [
+      'PLATFORM_ADMIN',
+      'DRAW_OPERATOR',
+      'CUSTOMER',
+    ]) {
+      expect(
+        codesByRole.get(roleCode),
+      ).not.toContain(Permissions.PURCHASE_REFUND_ADMIN);
+    }
   });
 
   it('requests a full Stripe refund and moves purchase/payment to REFUND_PENDING', async () => {
