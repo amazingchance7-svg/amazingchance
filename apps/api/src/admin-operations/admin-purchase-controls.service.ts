@@ -10,6 +10,7 @@ import {
   PurchaseStatus,
 } from '@prisma/client';
 
+import { AuditActions } from '../audit/audit-events.constants';
 import { createCorrelationId } from '../common/utils/identifier.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -121,6 +122,29 @@ export class AdminPurchaseControlsService {
           },
         });
 
+        await tx.auditLog.create({
+          data: {
+            actorType: AuditActorType.ADMIN,
+            actorId,
+            action:
+              AuditActions.ADMIN_PURCHASE_MANUAL_REVIEW,
+            entityType: 'PURCHASE',
+            entityId: purchase.id,
+            correlationId,
+            previousState: {
+              status: purchase.status,
+            },
+            newState: {
+              status:
+                PurchaseStatus.MANUAL_REVIEW,
+            },
+            metadata: {
+              reason: reason.trim(),
+            },
+            sealedAt: now,
+          },
+        });
+
         return {
           purchaseId: purchase.id,
           publicId: purchase.publicId,
@@ -228,6 +252,30 @@ export class AdminPurchaseControlsService {
               actorId,
               reason: reason.trim(),
             },
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            actorType: AuditActorType.ADMIN,
+            actorId,
+            action:
+              AuditActions.ADMIN_PURCHASE_CANCELLED,
+            entityType: 'PURCHASE',
+            entityId: purchase.id,
+            correlationId,
+            previousState: {
+              status:
+                PurchaseStatus.MANUAL_REVIEW,
+            },
+            newState: {
+              status:
+                PurchaseStatus.CANCELLED,
+            },
+            metadata: {
+              reason: reason.trim(),
+            },
+            sealedAt: now,
           },
         });
 
