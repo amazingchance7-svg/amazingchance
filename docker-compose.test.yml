@@ -3,8 +3,8 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: amazing_chance_test
-      POSTGRES_USER: amazing_chance_test
-      POSTGRES_PASSWORD: amazing_chance_test
+      POSTGRES_USER: amazing_chance_admin
+      POSTGRES_PASSWORD: amazing_chance_admin
     ports:
       - "55432:5432"
     tmpfs:
@@ -13,7 +13,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U amazing_chance_test -d amazing_chance_test"
+          "pg_isready -U amazing_chance_admin -d amazing_chance_test"
         ]
       interval: 2s
       timeout: 3s
