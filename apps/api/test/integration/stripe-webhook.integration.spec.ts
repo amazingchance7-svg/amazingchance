@@ -848,6 +848,139 @@ service = new StripeWebhookService(
     ).toBe(WebhookStatus.PROCESSED);
   });
 
+
+  it('recovers immediately when cutoff is crossed during payment orchestration', async () => {
+    const scenario = await createScenario(1);
+
+    const event = buildEvent({
+      id: `evt_cutoff_race_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.succeeded',
+      paymentIntent: buildPaymentIntent({
+        paymentId: scenario.payment.id,
+        amountMinor: 100,
+        status: 'succeeded',
+      }),
+    });
+    const signed = signEvent(event);
+
+    const orchestratorSpy = jest
+      .spyOn(
+        PaymentOrchestratorService.prototype,
+        'confirmPayment',
+      )
+      .mockImplementationOnce(async () => {
+        await prisma.lotteryDraw.update({
+          where: {
+            id: scenario.draw.id,
+          },
+          data: {
+            scheduledDrawAt: new Date(
+              Date.now() + 5 * 60 * 1000,
+            ),
+          },
+        });
+
+        throw new Error(
+          'simulated orchestration failure after cutoff crossed',
+        );
+      });
+
+    const createRefundSpy = jest
+      .spyOn(
+        StripeClient.prototype,
+        'createRefund',
+      )
+      .mockResolvedValue({
+        id: 're_cutoff_race_recovery',
+        object: 'refund',
+        amount: 100,
+        currency: 'usd',
+        metadata: {
+          paymentId: scenario.payment.id,
+          purchaseId: scenario.purchase.id,
+        },
+        payment_intent:
+          (event.data.object as Stripe.PaymentIntent).id,
+        status: 'pending',
+      } as unknown as Stripe.Refund);
+
+    try {
+      const result = await service.handle(
+        signed.rawBody,
+        signed.signature,
+      );
+
+      expect(result).toMatchObject({
+        providerEventId: event.id,
+        paymentId: scenario.payment.id,
+        duplicate: false,
+        ignored: false,
+      });
+
+      const [
+        payment,
+        purchase,
+        ticketCount,
+        paymentAllocation,
+        latePaymentLedger,
+        webhook,
+      ] = await Promise.all([
+        prisma.payment.findUniqueOrThrow({
+          where: {
+            id: scenario.payment.id,
+          },
+        }),
+        prisma.purchase.findUniqueOrThrow({
+          where: {
+            id: scenario.purchase.id,
+          },
+        }),
+        prisma.ticket.count({
+          where: {
+            purchaseId: scenario.purchase.id,
+          },
+        }),
+        prisma.ledgerTransaction.findUnique({
+          where: {
+            idempotencyKey:
+              `payment-allocated:${scenario.payment.id}`,
+          },
+        }),
+        prisma.ledgerTransaction.findUnique({
+          where: {
+            idempotencyKey:
+              `late-payment-received:${scenario.payment.id}`,
+          },
+        }),
+        prisma.webhookEvent.findUniqueOrThrow({
+          where: {
+            provider_providerEventId: {
+              provider: 'STRIPE',
+              providerEventId: event.id,
+            },
+          },
+        }),
+      ]);
+
+      expect(payment.status).toBe(
+        PaymentStatus.REFUND_PENDING,
+      );
+      expect(purchase.status).toBe(
+        PurchaseStatus.REFUND_PENDING,
+      );
+      expect(ticketCount).toBe(0);
+      expect(paymentAllocation).toBeNull();
+      expect(latePaymentLedger).not.toBeNull();
+      expect(webhook.status).toBe(
+        WebhookStatus.PROCESSED,
+      );
+      expect(createRefundSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      orchestratorSpy.mockRestore();
+      createRefundSpy.mockRestore();
+    }
+  });
+
   it('deduplicates repeated delivery of the same signed event', async () => {
     const scenario = await createScenario(3);
     const event = buildEvent({

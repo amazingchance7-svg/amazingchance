@@ -359,10 +359,51 @@ const confirmedAt =
       };
     }
 
+    try {
+      await this.paymentOrchestrator.confirmPayment(
+        payment.id,
+      );
+    } catch (error: unknown) {
+      const recoveryPurchase =
+        await this.prisma.purchase.findUnique({
+          where: {
+            id: payment.purchaseId,
+          },
+          select: {
+            status: true,
+            draw: {
+              select: {
+                status: true,
+                salesOpenAt: true,
+                salesCloseAt: true,
+                scheduledDrawAt: true,
+              },
+            },
+          },
+        });
 
-    await this.paymentOrchestrator.confirmPayment(
-      payment.id,
-    );
+      if (
+        recoveryPurchase?.status ===
+          PurchaseStatus.PAYMENT_PENDING &&
+        ticketSalesBlockReason(
+          recoveryPurchase.draw,
+          new Date(),
+        )
+      ) {
+        await this.stripeRefundService
+          .requestLatePaymentRefund(
+            payment.id,
+          );
+
+        return {
+          paymentId: payment.id,
+          ignored: false,
+        };
+      }
+
+      throw error;
+    }
+
 
     return {
       paymentId:
