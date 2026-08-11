@@ -108,6 +108,54 @@ export class StripeRefundService {
     };
   }
 
+
+  async requestLatePaymentRefund(
+    paymentId: string,
+  ): Promise<StripeRefundRequestResult> {
+    const prepared =
+      await this.prepareLatePaymentRefund(
+        paymentId,
+      );
+
+    const refund = prepared.providerRefundId
+      ? await this.stripeClient.retrieveRefund(
+          prepared.providerRefundId,
+        )
+      : await this.stripeClient.createRefund({
+          paymentIntentId:
+            prepared.paymentIntentId,
+          paymentId: prepared.paymentId,
+          purchaseId: prepared.purchaseId,
+          idempotencyKey:
+            `late-payment-refund:${prepared.paymentId}`,
+        });
+
+    this.assertRefundMatchesPayment(
+      refund,
+      prepared.paymentIntentId,
+      prepared.amountMinor,
+      prepared.currency,
+    );
+
+    await this.persistRefundState(
+      prepared.paymentId,
+      refund,
+    );
+
+    return {
+      purchaseId: prepared.purchaseId,
+      paymentId: prepared.paymentId,
+      refundId: refund.id,
+      amountMinor:
+        prepared.amountMinor.toString(),
+      currency: prepared.currency,
+      status: refund.status,
+      alreadyRequested:
+        prepared.alreadyRequested ||
+        prepared.providerRefundId !== null,
+    };
+  }
+
   async processRefundEvent(
     refund: Stripe.Refund,
   ): Promise<{
@@ -163,6 +211,264 @@ export class StripeRefundService {
       completed: false,
       failed: false,
     };
+  }
+
+
+  private prepareLatePaymentRefund(
+    paymentId: string,
+  ): Promise<PreparedRefund> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const paymentRows =
+          await tx.$queryRaw<
+            {
+              id: string;
+              purchaseId: string;
+            }[]
+          >`
+            SELECT "id", "purchaseId"
+            FROM "payments"
+            WHERE "id" = ${paymentId}::uuid
+            FOR UPDATE
+          `;
+
+        const lockedPayment =
+          paymentRows[0];
+
+        if (!lockedPayment) {
+          throw new NotFoundException(
+            'Payment not found',
+          );
+        }
+
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "purchases"
+          WHERE "id" = ${lockedPayment.purchaseId}::uuid
+          FOR UPDATE
+        `;
+
+        const payment =
+          await tx.payment.findUnique({
+            where: { id: paymentId },
+            include: {
+              purchase: {
+                include: {
+                  tickets: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                  ticketAllocation: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+        if (!payment) {
+          throw new NotFoundException(
+            'Payment not found',
+          );
+        }
+
+        this.assertStripePayment(
+          payment.provider,
+        );
+
+        if (!payment.providerTransactionId) {
+          throw new ConflictException(
+            'Stripe PaymentIntent ID is missing for the late payment',
+          );
+        }
+
+        const purchase = payment.purchase;
+
+        if (
+          payment.status ===
+            PaymentStatus.REFUND_PENDING &&
+          purchase.status ===
+            PurchaseStatus.REFUND_PENDING
+        ) {
+          return {
+            purchaseId: purchase.id,
+            purchasePublicId:
+              purchase.publicId,
+            paymentId: payment.id,
+            paymentIntentId:
+              payment.providerTransactionId,
+            amountMinor:
+              payment.amountMinor,
+            currency: payment.currency,
+            providerRefundId:
+              this.readProviderRefundId(
+                payment.providerData,
+              ),
+            alreadyRequested: true,
+          };
+        }
+
+        if (
+          payment.status !==
+          PaymentStatus.SUCCEEDED
+        ) {
+          throw new ConflictException(
+            'Late-payment recovery requires a succeeded payment',
+          );
+        }
+
+        if (
+          purchase.status !==
+          PurchaseStatus.PAYMENT_PENDING
+        ) {
+          throw new ConflictException(
+            `Late-payment recovery requires PAYMENT_PENDING purchase, found ${purchase.status}`,
+          );
+        }
+
+        if (
+          purchase.tickets.length !== 0 ||
+          purchase.ticketAllocation
+        ) {
+          throw new ConflictException(
+            'Late-payment recovery requires zero issued tickets and no ticket allocation',
+          );
+        }
+
+        const allocationTransaction =
+          await tx.ledgerTransaction.findUnique({
+            where: {
+              idempotencyKey:
+                `payment-allocated:${payment.id}`,
+            },
+          });
+
+        if (allocationTransaction) {
+          throw new ConflictException(
+            'Late-payment recovery cannot run after financial allocation',
+          );
+        }
+
+        const receivedLedger =
+          await this.ledger.appendInTransaction(
+            tx,
+            {
+              type:
+                LedgerTransactionType.PAYMENT_CONFIRMED,
+              idempotencyKey:
+                `late-payment-received:${payment.id}`,
+              referenceType: 'PAYMENT',
+              referenceId: payment.id,
+              currency: payment.currency,
+              description:
+                'Late Stripe payment received after ticket sales cutoff',
+              metadata: {
+                purchaseId: purchase.id,
+                recovery:
+                  'LATE_PAYMENT_AFTER_SALES_CUTOFF',
+              },
+              postings: [
+                {
+                  accountCode:
+                    LedgerAccountCode.CASH,
+                  side: LedgerSide.DEBIT,
+                  amountMinor:
+                    payment.amountMinor,
+                },
+                {
+                  accountCode:
+                    LedgerAccountCode.PAYMENT_CLEARING,
+                  side: LedgerSide.CREDIT,
+                  amountMinor:
+                    payment.amountMinor,
+                },
+              ],
+            },
+          );
+
+        const purchaseUpdate =
+          await tx.purchase.updateMany({
+            where: {
+              id: purchase.id,
+              status:
+                PurchaseStatus.PAYMENT_PENDING,
+            },
+            data: {
+              status:
+                PurchaseStatus.REFUND_PENDING,
+            },
+          });
+
+        if (purchaseUpdate.count !== 1) {
+          throw new ConflictException(
+            'Purchase state changed while late-payment recovery was being prepared',
+          );
+        }
+
+        const paymentUpdate =
+          await tx.payment.updateMany({
+            where: {
+              id: payment.id,
+              status:
+                PaymentStatus.SUCCEEDED,
+            },
+            data: {
+              status:
+                PaymentStatus.REFUND_PENDING,
+            },
+          });
+
+        if (paymentUpdate.count !== 1) {
+          throw new ConflictException(
+            'Payment state changed while late-payment recovery was being prepared',
+          );
+        }
+
+        const now = new Date();
+
+        await tx.purchaseStateEvent.create({
+          data: {
+            purchaseId: purchase.id,
+            fromStatus:
+              PurchaseStatus.PAYMENT_PENDING,
+            toStatus:
+              PurchaseStatus.REFUND_PENDING,
+            cause:
+              'LATE_PAYMENT_AFTER_SALES_CUTOFF',
+            source:
+              AuditActorType.SYSTEM,
+            correlationId:
+              `late-payment-recovery:${payment.id}`,
+            sealedAt: now,
+            metadata: {
+              paymentId: payment.id,
+              ledgerTransactionId:
+                receivedLedger.transaction.id,
+            },
+          },
+        });
+
+        return {
+          purchaseId: purchase.id,
+          purchasePublicId:
+            purchase.publicId,
+          paymentId: payment.id,
+          paymentIntentId:
+            payment.providerTransactionId,
+          amountMinor: payment.amountMinor,
+          currency: payment.currency,
+          providerRefundId: null,
+          alreadyRequested: false,
+        };
+      },
+      {
+        isolationLevel:
+          Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
   }
 
   private prepareRefund(
@@ -416,8 +722,18 @@ export class StripeRefundService {
         }
 
         const purchase = payment.purchase;
+        const latePaymentReceived =
+          await tx.ledgerTransaction.findUnique({
+            where: {
+              idempotencyKey:
+                `late-payment-received:${payment.id}`,
+            },
+          });
+
         const ledgerKey =
-          `refund-completed:${payment.id}`;
+          latePaymentReceived
+            ? `late-payment-refund-completed:${payment.id}`
+            : `refund-completed:${payment.id}`;
 
         if (
           payment.status === PaymentStatus.REFUNDED &&
@@ -469,6 +785,163 @@ export class StripeRefundService {
           throw new ConflictException(
             'Refund cannot complete after a ticket snapshot has been created',
           );
+        }
+
+
+        if (latePaymentReceived) {
+          if (
+            purchase.tickets.length !== 0
+          ) {
+            throw new ConflictException(
+              'Late-payment refund cannot complete when tickets exist',
+            );
+          }
+
+          const allocationTransaction =
+            await tx.ledgerTransaction.findUnique({
+              where: {
+                idempotencyKey:
+                  `payment-allocated:${payment.id}`,
+              },
+            });
+
+          if (allocationTransaction) {
+            throw new ConflictException(
+              'Late-payment refund cannot complete after financial allocation',
+            );
+          }
+
+          const refundLedger =
+            await this.ledger.appendInTransaction(
+              tx,
+              {
+                type:
+                  LedgerTransactionType.REFUND_COMPLETED,
+                idempotencyKey:
+                  ledgerKey,
+                referenceType: 'PAYMENT',
+                referenceId: payment.id,
+                currency: payment.currency,
+                description:
+                  'Late Stripe payment refunded without ticket or jackpot allocation',
+                metadata: {
+                  purchaseId: purchase.id,
+                  stripeRefundId:
+                    refund.id,
+                  stripePaymentIntentId:
+                    payment.providerTransactionId,
+                  recovery:
+                    'LATE_PAYMENT_AFTER_SALES_CUTOFF',
+                },
+                postings: [
+                  {
+                    accountCode:
+                      LedgerAccountCode.PAYMENT_CLEARING,
+                    side:
+                      LedgerSide.DEBIT,
+                    amountMinor:
+                      payment.amountMinor,
+                  },
+                  {
+                    accountCode:
+                      LedgerAccountCode.CASH,
+                    side:
+                      LedgerSide.CREDIT,
+                    amountMinor:
+                      payment.amountMinor,
+                  },
+                ],
+              },
+            );
+
+          const now = new Date();
+
+          const paymentUpdate =
+            await tx.payment.updateMany({
+              where: {
+                id: payment.id,
+                status:
+                  PaymentStatus.REFUND_PENDING,
+              },
+              data: {
+                status:
+                  PaymentStatus.REFUNDED,
+                providerData:
+                  this.mergeProviderData(
+                    payment.providerData,
+                    {
+                      stripeRefundId:
+                        refund.id,
+                      stripeRefundStatus:
+                        refund.status,
+                      stripeRefundAmount:
+                        refund.amount,
+                      stripeRefundCurrency:
+                        refund.currency,
+                    },
+                  ),
+              },
+            });
+
+          if (paymentUpdate.count !== 1) {
+            throw new ConflictException(
+              'Payment state changed while late-payment refund was completing',
+            );
+          }
+
+          const purchaseUpdate =
+            await tx.purchase.updateMany({
+              where: {
+                id: purchase.id,
+                status:
+                  PurchaseStatus.REFUND_PENDING,
+              },
+              data: {
+                status:
+                  PurchaseStatus.REFUNDED,
+              },
+            });
+
+          if (purchaseUpdate.count !== 1) {
+            throw new ConflictException(
+              'Purchase state changed while late-payment refund was completing',
+            );
+          }
+
+          await tx.purchaseStateEvent.create({
+            data: {
+              purchaseId: purchase.id,
+              fromStatus:
+                PurchaseStatus.REFUND_PENDING,
+              toStatus:
+                PurchaseStatus.REFUNDED,
+              cause:
+                'LATE_PAYMENT_STRIPE_REFUND_SUCCEEDED',
+              source:
+                AuditActorType.PAYMENT_PROVIDER,
+              correlationId:
+                `late-payment-refund:${refund.id}`,
+              sealedAt: now,
+              metadata: {
+                paymentId: payment.id,
+                stripeRefundId:
+                  refund.id,
+                ledgerTransactionId:
+                  refundLedger.transaction.id,
+              },
+            },
+          });
+
+          return {
+            purchaseId: purchase.id,
+            paymentId: payment.id,
+            refundId: refund.id,
+            ledgerTransactionId:
+              refundLedger.transaction.id,
+            voidedTicketCount: 0,
+            alreadyProcessed:
+              refundLedger.alreadyAppended,
+          };
         }
 
         const allocationTransaction =
