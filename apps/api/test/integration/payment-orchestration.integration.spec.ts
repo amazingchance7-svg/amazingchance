@@ -18,6 +18,7 @@ import { TicketAllocationService } from '../../src/tickets/ticket-allocation.ser
 import {
   cleanTestDatabase,
   createTestPrisma,
+  executeAdminSql,
 } from './database.helper';
 
 describe('Verified payment orchestration integration', () => {
@@ -501,7 +502,7 @@ describe('Verified payment orchestration integration', () => {
     const s =
       await scenario(1);
 
-    await prisma.$executeRawUnsafe(`
+    await executeAdminSql(`
       CREATE OR REPLACE FUNCTION sec004_test_reject_ticket_insert()
       RETURNS TRIGGER
       LANGUAGE plpgsql
@@ -514,7 +515,7 @@ describe('Verified payment orchestration integration', () => {
       $$;
     `);
 
-    await prisma.$executeRawUnsafe(`
+    await executeAdminSql(`
       DROP TRIGGER IF EXISTS
         aaa_sec004_test_reject_ticket_insert
       ON "tickets";
@@ -535,12 +536,12 @@ describe('Verified payment orchestration integration', () => {
         'SEC004_TEST_TICKET_INSERT_FAILURE',
       );
     } finally {
-      await prisma.$executeRawUnsafe(`
+      await executeAdminSql(`
         DROP TRIGGER IF EXISTS
           aaa_sec004_test_reject_ticket_insert
         ON "tickets";
       `);
-      await prisma.$executeRawUnsafe(`
+      await executeAdminSql(`
         DROP FUNCTION IF EXISTS
           sec004_test_reject_ticket_insert();
       `);
