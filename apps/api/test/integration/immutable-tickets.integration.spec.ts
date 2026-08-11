@@ -12,6 +12,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 describe('Immutable tickets integration', () => {
   let prisma: PrismaService;
@@ -65,6 +69,15 @@ describe('Immutable tickets integration', () => {
         completedAt: new Date(),
       },
     });
+
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: purchase.id,
+        drawId: draw.id,
+        numberInDraw: 1n,
+      },
+    );
 
     const ticket = await prisma.ticket.create({
       data: {
@@ -263,6 +276,15 @@ describe('Immutable tickets integration', () => {
 
   it('preserves unique ticket numbers within a draw', async () => {
     const { user, draw, purchase } = await createTicket();
+
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: purchase.id,
+        drawId: draw.id,
+        numberInDraw: 1n,
+      },
+    );
 
     await expect(
       prisma.ticket.create({

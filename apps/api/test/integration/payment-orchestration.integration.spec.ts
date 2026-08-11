@@ -501,26 +501,50 @@ describe('Verified payment orchestration integration', () => {
     const s =
       await scenario(1);
 
-    await prisma.ticket.create({
-      data: {
-        publicId:
-          `TKT-${randomUUID()}`,
-        userId:
-          s.user.id,
-        purchaseId:
-          s.purchase.id,
-        drawId:
-          s.draw.id,
-        numberInDraw:
-          1n,
-      },
-    });
+    await prisma.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION sec004_test_reject_ticket_insert()
+      RETURNS TRIGGER
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RAISE EXCEPTION
+          'SEC004_TEST_TICKET_INSERT_FAILURE'
+          USING ERRCODE = '23514';
+      END;
+      $$;
+    `);
 
-    await expect(
-      service.confirmPayment(
-        s.payment.id,
-      ),
-    ).rejects.toThrow();
+    await prisma.$executeRawUnsafe(`
+      DROP TRIGGER IF EXISTS
+        aaa_sec004_test_reject_ticket_insert
+      ON "tickets";
+
+      CREATE TRIGGER
+        aaa_sec004_test_reject_ticket_insert
+      BEFORE INSERT ON "tickets"
+      FOR EACH ROW
+      EXECUTE FUNCTION sec004_test_reject_ticket_insert();
+    `);
+
+    try {
+      await expect(
+        service.confirmPayment(
+          s.payment.id,
+        ),
+      ).rejects.toThrow(
+        'SEC004_TEST_TICKET_INSERT_FAILURE',
+      );
+    } finally {
+      await prisma.$executeRawUnsafe(`
+        DROP TRIGGER IF EXISTS
+          aaa_sec004_test_reject_ticket_insert
+        ON "tickets";
+      `);
+      await prisma.$executeRawUnsafe(`
+        DROP FUNCTION IF EXISTS
+          sec004_test_reject_ticket_insert();
+      `);
+    }
 
     expect(
       (
@@ -538,15 +562,12 @@ describe('Verified payment orchestration integration', () => {
     expect(
       await prisma.ledgerTransaction.count(),
     ).toBe(0);
-
     expect(
       await prisma.ticketAllocation.count(),
     ).toBe(0);
-
     expect(
       await prisma.ticket.count(),
-    ).toBe(1);
-
+    ).toBe(0);
     expect(
       await prisma.purchaseStateEvent.count(),
     ).toBe(0);

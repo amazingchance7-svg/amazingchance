@@ -11,6 +11,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 describe('SEC-001 hard ticket sales cutoff integration', () => {
   let prisma: PrismaService;
@@ -78,6 +82,15 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
   async function issueTicket(
     fixture: Awaited<ReturnType<typeof createFixture>>,
   ) {
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: fixture.purchase.id,
+        drawId: fixture.draw.id,
+        numberInDraw: 1n,
+      },
+    );
+
     return prisma.ticket.create({
       data: {
         publicId: `TKT-SEC001-${randomUUID()}`,
@@ -185,6 +198,15 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
         ).toBeLessThan(hardCutoffAt.getTime());
 
         await new Promise((resolve) => setTimeout(resolve, 3_500));
+
+        await ensureTestTicketAllocation(
+          tx,
+          {
+            purchaseId: fixture.purchase.id,
+            drawId: fixture.draw.id,
+            numberInDraw: 1n,
+          },
+        );
 
         return tx.ticket.create({
           data: {

@@ -19,6 +19,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 const OWNER_SECRET =
   'integration-public-randomness-owner-secret-at-least-32-bytes';
@@ -136,6 +140,15 @@ describe('Public randomness verification integration', () => {
       index <= 3;
       index += 1
     ) {
+      await ensureTestTicketAllocation(
+        prisma,
+        {
+          purchaseId: purchase.id,
+          drawId: draw.id,
+          numberInDraw: BigInt(index),
+        },
+      );
+
       await prisma.ticket.create({
         data: {
           publicId:

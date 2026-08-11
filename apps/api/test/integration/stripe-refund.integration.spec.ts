@@ -19,6 +19,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 describe('Stripe refund pipeline', () => {
   let prisma: PrismaService;
@@ -102,6 +106,15 @@ describe('Stripe refund pipeline', () => {
         confirmedAt: new Date(),
       },
     });
+
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: purchase.id,
+        drawId: draw.id,
+        numberInDraw: 1n,
+      },
+    );
 
     await prisma.ticket.create({
       data: {

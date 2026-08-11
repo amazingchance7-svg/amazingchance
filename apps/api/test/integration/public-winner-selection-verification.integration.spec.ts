@@ -18,6 +18,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 const OWNER_SECRET =
   'integration-public-winner-selection-owner-secret-at-least-32-bytes';
@@ -141,6 +145,15 @@ describe('Public winner selection verification integration', () => {
       index <= 4;
       index += 1
     ) {
+      await ensureTestTicketAllocation(
+        prisma,
+        {
+          purchaseId: purchase.id,
+          drawId: draw.id,
+          numberInDraw: BigInt(index),
+        },
+      );
+
       await prisma.ticket.create({
         data: {
           publicId:
