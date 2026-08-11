@@ -25,6 +25,22 @@ type SessionUser = {
   status: string;
 };
 
+
+type SalesAvailability = {
+  available: boolean;
+  reason:
+    | 'AVAILABLE'
+    | 'NO_WEEKLY_DRAW'
+    | 'SALES_NOT_STARTED'
+    | 'SALES_CLOSED';
+  drawId: string | null;
+  publicId: string | null;
+  scheduledDrawAt: string | null;
+  effectiveCutoffAt: string | null;
+  ticketPriceMinor: string | null;
+  currency: string | null;
+};
+
 type CheckoutPayload = {
   purchase: {
     id: string;
@@ -211,6 +227,20 @@ export default function CheckoutPage() {
     setPassword,
   ] = useState('');
 
+
+  const [
+    availability,
+    setAvailability,
+  ] =
+    useState<SalesAvailability | null>(
+      null,
+    );
+
+  const [
+    checkingAvailability,
+    setCheckingAvailability,
+  ] = useState(true);
+
   const [
     drawId,
     setDrawId,
@@ -267,6 +297,87 @@ export default function CheckoutPage() {
     }
 
     void loadSession();
+  }, []);
+
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAvailability() {
+      try {
+        const response =
+          await fetch(
+            '/api/sales-availability',
+            {
+              cache:
+                'no-store',
+            },
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            await readMessage(
+              response,
+            ),
+          );
+        }
+
+        const result =
+          (await response.json()) as SalesAvailability;
+
+        if (!active) {
+          return;
+        }
+
+        setAvailability(
+          result,
+        );
+        setDrawId(
+          result.available &&
+          result.drawId
+            ? result.drawId
+            : '',
+        );
+      } catch (
+        requestError
+      ) {
+        if (active) {
+          setAvailability(
+            null,
+          );
+          setDrawId('');
+          setError(
+            requestError instanceof
+              Error
+              ? requestError.message
+              : 'Unable to load ticket sales availability.',
+          );
+        }
+      } finally {
+        if (active) {
+          setCheckingAvailability(
+            false,
+          );
+        }
+      }
+    }
+
+    void loadAvailability();
+
+    const interval =
+      window.setInterval(
+        () => {
+          void loadAvailability();
+        },
+        15_000,
+      );
+
+    return () => {
+      active = false;
+      window.clearInterval(
+        interval,
+      );
+    };
   }, []);
 
   const appearance =
@@ -560,22 +671,53 @@ export default function CheckoutPage() {
               Create purchase
             </h2>
 
-            <label>
-              Draw UUID
-              <input
-                value={drawId}
-                onChange={(
-                  event,
-                ) =>
-                  setDrawId(
-                    event.target
-                      .value,
-                  )
-                }
-                placeholder="00000000-0000-0000-0000-000000000000"
-                required
-              />
-            </label>
+            <div
+              className={
+                styles.summary
+              }
+            >
+              <div>
+                <span>
+                  Current draw
+                </span>
+                <strong>
+                  {checkingAvailability
+                    ? 'Checking...'
+                    : availability
+                        ?.publicId ??
+                      'Unavailable'}
+                </strong>
+              </div>
+
+              <div>
+                <span>
+                  Sales status
+                </span>
+                <strong>
+                  {availability
+                    ?.available
+                    ? 'Open'
+                    : availability
+                        ?.reason ??
+                      'Unavailable'}
+                </strong>
+              </div>
+
+              {availability
+                ?.effectiveCutoffAt ? (
+                <div>
+                  <span>
+                    Sales close
+                  </span>
+                  <strong>
+                    {new Date(
+                      availability
+                        .effectiveCutoffAt,
+                    ).toLocaleString()}
+                  </strong>
+                </div>
+              ) : null}
+            </div>
 
             <label>
               Number of tickets
@@ -604,7 +746,11 @@ export default function CheckoutPage() {
               className={
                 styles.primaryButton
               }
-              disabled={loading}
+              disabled={
+                loading ||
+                checkingAvailability ||
+                !availability?.available
+              }
             >
               {loading
                 ? 'Preparing payment...'
