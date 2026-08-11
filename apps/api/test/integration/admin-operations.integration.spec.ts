@@ -30,53 +30,73 @@ describe('Admin operations backoffice', () => {
     await prisma.$disconnect();
   });
 
-  it('seeds backoffice read permissions only for PLATFORM_ADMIN', async () => {
-    const expected = [
+  it('separates backoffice read permissions between PLATFORM_ADMIN and BUSINESS_OWNER', async () => {
+    const roles = await prisma.role.findMany({
+      where: {
+        code: {
+          in: [
+            'BUSINESS_OWNER',
+            'PLATFORM_ADMIN',
+            'DRAW_OPERATOR',
+            'CUSTOMER',
+          ],
+        },
+      },
+      include: {
+        permissions: {
+          include: { permission: true },
+        },
+      },
+    });
+
+    const codesByRole = new Map(
+      roles.map((role) => [
+        role.code,
+        role.permissions.map(
+          (entry) => entry.permission.code,
+        ),
+      ]),
+    );
+
+    const platformCodes =
+      codesByRole.get('PLATFORM_ADMIN') ?? [];
+    const ownerCodes =
+      codesByRole.get('BUSINESS_OWNER') ?? [];
+    const operatorCodes =
+      codesByRole.get('DRAW_OPERATOR') ?? [];
+    const customerCodes =
+      codesByRole.get('CUSTOMER') ?? [];
+
+    for (const permission of [
+      Permissions.USER_READ_ADMIN,
+      Permissions.PURCHASE_READ_ADMIN,
+      Permissions.TICKET_READ_ADMIN,
+    ]) {
+      expect(platformCodes).toContain(permission);
+    }
+
+    expect(platformCodes).not.toContain(
+      Permissions.FINANCE_READ_ADMIN,
+    );
+
+    for (const permission of [
+      Permissions.PURCHASE_READ_ADMIN,
+      Permissions.TICKET_READ_ADMIN,
+      Permissions.FINANCE_READ_ADMIN,
+    ]) {
+      expect(ownerCodes).toContain(permission);
+    }
+
+    expect(ownerCodes).not.toContain(
+      Permissions.USER_READ_ADMIN,
+    );
+
+    for (const permission of [
       Permissions.USER_READ_ADMIN,
       Permissions.PURCHASE_READ_ADMIN,
       Permissions.TICKET_READ_ADMIN,
       Permissions.FINANCE_READ_ADMIN,
-    ];
-
-    const platformAdmin = await prisma.role.findUniqueOrThrow({
-      where: { code: 'PLATFORM_ADMIN' },
-      include: {
-        permissions: {
-          include: { permission: true },
-        },
-      },
-    });
-
-    const drawOperator = await prisma.role.findUniqueOrThrow({
-      where: { code: 'DRAW_OPERATOR' },
-      include: {
-        permissions: {
-          include: { permission: true },
-        },
-      },
-    });
-
-    const customer = await prisma.role.findUniqueOrThrow({
-      where: { code: 'CUSTOMER' },
-      include: {
-        permissions: {
-          include: { permission: true },
-        },
-      },
-    });
-
-    const platformCodes = platformAdmin.permissions.map(
-      (entry) => entry.permission.code,
-    );
-    const operatorCodes = drawOperator.permissions.map(
-      (entry) => entry.permission.code,
-    );
-    const customerCodes = customer.permissions.map(
-      (entry) => entry.permission.code,
-    );
-
-    for (const permission of expected) {
-      expect(platformCodes).toContain(permission);
+    ]) {
       expect(operatorCodes).not.toContain(permission);
       expect(customerCodes).not.toContain(permission);
     }
