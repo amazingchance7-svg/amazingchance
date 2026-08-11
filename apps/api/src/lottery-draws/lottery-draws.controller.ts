@@ -30,6 +30,7 @@ import { PublicVerificationService } from '../snapshots/public-verification.serv
 import { ListLotteryDrawsDto } from './dto/list-lottery-draws.dto';
 import { LotteryDrawsService } from './lottery-draws.service';
 import { PublicDrawResultService } from './public-draw-result.service';
+import { WeeklyDrawSalesService } from './weekly-draw-sales.service';
 
 @ApiTags('Lottery Draws')
 @Controller('lottery-draws')
@@ -43,6 +44,7 @@ export class LotteryDrawsController {
     private readonly publicDrawResultService: PublicDrawResultService,
     private readonly publicRandomnessVerificationService: PublicRandomnessVerificationService,
     private readonly publicWinnerSelectionVerificationService: PublicWinnerSelectionVerificationService,
+    private readonly weeklyDrawSalesService: WeeklyDrawSalesService,
   ) {}
 
   @Get()
@@ -61,6 +63,17 @@ export class LotteryDrawsController {
     );
   }
 
+  @Get('sales-availability')
+  @ApiOperation({
+    summary: 'Get current weekly ticket sales availability',
+  })
+  @ApiOkResponse({
+    description:
+      'Current weekly sales availability returned successfully.',
+  })
+  salesAvailability() {
+    return this.weeklyDrawSalesService.getAvailability();
+  }
   @Get(':id/result')
   @ApiOperation({
     summary:

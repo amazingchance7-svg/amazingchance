@@ -10,6 +10,7 @@ import { AdminLotteryDrawsController } from './admin-lottery-draws.controller';
 import { LotteryDrawsController } from './lottery-draws.controller';
 import { LotteryDrawsService } from './lottery-draws.service';
 import { PublicDrawResultService } from './public-draw-result.service';
+import { WeeklyDrawSalesService } from './weekly-draw-sales.service';
 
 @Module({
   imports: [
@@ -27,10 +28,12 @@ import { PublicDrawResultService } from './public-draw-result.service';
   providers: [
     LotteryDrawsService,
     PublicDrawResultService,
+    WeeklyDrawSalesService,
   ],
   exports: [
     LotteryDrawsService,
     PublicDrawResultService,
+    WeeklyDrawSalesService,
   ],
 })
 export class LotteryDrawsModule {}
