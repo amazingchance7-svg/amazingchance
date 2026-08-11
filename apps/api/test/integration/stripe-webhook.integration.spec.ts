@@ -49,12 +49,13 @@ describe('Stripe webhook pipeline integration', () => {
       new TicketAllocationService(),
       new FinancialAllocationService(prisma),
     );
-
-    const refundService = {
-      processRefundEvent: jest.fn(),
-    } as unknown as StripeRefundService;
-
-    service = new StripeWebhookService(
+    const refundService =
+      new StripeRefundService(
+        prisma,
+        new LedgerService(prisma),
+        new StripeClient(config),
+      );
+service = new StripeWebhookService(
       prisma,
       new StripeClient(config),
       orchestrator,
@@ -292,6 +293,554 @@ describe('Stripe webhook pipeline integration', () => {
             provider_providerEventId: {
               provider: 'STRIPE',
               providerEventId: event.id,
+            },
+          },
+        })
+      ).status,
+    ).toBe(WebhookStatus.PROCESSED);
+  });
+
+
+  it('automatically starts late-payment refund when succeeded webhook arrives after cutoff', async () => {
+    const scenario = await createScenario(1);
+
+    await prisma.lotteryDraw.update({
+      where: {
+        id: scenario.draw.id,
+      },
+      data: {
+        scheduledDrawAt: new Date(
+          Date.now() + 5 * 60 * 1000,
+        ),
+      },
+    });
+
+    const event = buildEvent({
+      type: 'payment_intent.succeeded',
+      paymentIntent: buildPaymentIntent({
+        paymentId: scenario.payment.id,
+        amountMinor: 100,
+        status: 'succeeded',
+      }),
+    });
+    const signed = signEvent(event);
+
+    const createRefundSpy = jest
+      .spyOn(
+        StripeClient.prototype,
+        'createRefund',
+      )
+      .mockResolvedValue({
+        id: 're_late_payment_webhook',
+        object: 'refund',
+        amount: 100,
+        currency: 'usd',
+        metadata: {
+          paymentId: scenario.payment.id,
+          purchaseId:
+            scenario.purchase.id,
+        },
+        payment_intent:
+          (event.data.object as Stripe.PaymentIntent).id,
+        status: 'pending',
+      } as unknown as Stripe.Refund);
+
+    try {
+      const result = await service.handle(
+        signed.rawBody,
+        signed.signature,
+      );
+
+      expect(result).toMatchObject({
+        providerEventId: event.id,
+        eventType:
+          'payment_intent.succeeded',
+        paymentId:
+          scenario.payment.id,
+        duplicate: false,
+        ignored: false,
+      });
+
+      const [
+        payment,
+        purchase,
+        tickets,
+        paymentAllocation,
+        latePaymentLedger,
+        webhook,
+      ] = await Promise.all([
+        prisma.payment.findUniqueOrThrow({
+          where: {
+            id: scenario.payment.id,
+          },
+        }),
+        prisma.purchase.findUniqueOrThrow({
+          where: {
+            id: scenario.purchase.id,
+          },
+        }),
+        prisma.ticket.count({
+          where: {
+            purchaseId:
+              scenario.purchase.id,
+          },
+        }),
+        prisma.ledgerTransaction.findUnique({
+          where: {
+            idempotencyKey:
+              `payment-allocated:${scenario.payment.id}`,
+          },
+        }),
+        prisma.ledgerTransaction.findUnique({
+          where: {
+            idempotencyKey:
+              `late-payment-received:${scenario.payment.id}`,
+          },
+        }),
+        prisma.webhookEvent.findUniqueOrThrow({
+          where: {
+            provider_providerEventId: {
+              provider: 'STRIPE',
+              providerEventId:
+                event.id,
+            },
+          },
+        }),
+      ]);
+
+      expect(payment.status).toBe(
+        PaymentStatus.REFUND_PENDING,
+      );
+      expect(purchase.status).toBe(
+        PurchaseStatus.REFUND_PENDING,
+      );
+      expect(tickets).toBe(0);
+      expect(paymentAllocation).toBeNull();
+      expect(latePaymentLedger).not.toBeNull();
+      expect(webhook.status).toBe(
+        WebhookStatus.PROCESSED,
+      );
+
+      expect(createRefundSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentIntentId:
+            (event.data.object as Stripe.PaymentIntent).id,
+          paymentId:
+            scenario.payment.id,
+          purchaseId:
+            scenario.purchase.id,
+          idempotencyKey:
+            `late-payment-refund:${scenario.payment.id}`,
+        }),
+      );
+    } finally {
+      createRefundSpy.mockRestore();
+    }
+  });
+
+
+  it('does not downgrade REFUND_PENDING when a distinct succeeded event is delivered again', async () => {
+    const scenario = await createScenario(1);
+
+    await prisma.lotteryDraw.update({
+      where: {
+        id: scenario.draw.id,
+      },
+      data: {
+        scheduledDrawAt: new Date(
+          Date.now() + 5 * 60 * 1000,
+        ),
+      },
+    });
+
+    const paymentIntent = buildPaymentIntent({
+      paymentId: scenario.payment.id,
+      amountMinor: 100,
+      status: 'succeeded',
+    });
+
+    const createRefundSpy = jest
+      .spyOn(
+        StripeClient.prototype,
+        'createRefund',
+      )
+      .mockResolvedValue({
+        id: 're_late_payment_duplicate',
+        object: 'refund',
+        amount: 100,
+        currency: 'usd',
+        metadata: {
+          paymentId: scenario.payment.id,
+          purchaseId: scenario.purchase.id,
+        },
+        payment_intent: paymentIntent.id,
+        status: 'pending',
+      } as unknown as Stripe.Refund);
+
+    try {
+      const firstEvent = buildEvent({
+        id: `evt_first_${randomUUID().replaceAll('-', '')}`,
+        type: 'payment_intent.succeeded',
+        paymentIntent,
+      });
+      const secondEvent = buildEvent({
+        id: `evt_second_${randomUUID().replaceAll('-', '')}`,
+        type: 'payment_intent.succeeded',
+        paymentIntent,
+      });
+
+      const firstSigned = signEvent(firstEvent);
+      const secondSigned = signEvent(secondEvent);
+
+      await service.handle(
+        firstSigned.rawBody,
+        firstSigned.signature,
+      );
+
+      expect(
+        (
+          await prisma.payment.findUniqueOrThrow({
+            where: {
+              id: scenario.payment.id,
+            },
+          })
+        ).status,
+      ).toBe(PaymentStatus.REFUND_PENDING);
+
+      const second = await service.handle(
+        secondSigned.rawBody,
+        secondSigned.signature,
+      );
+
+      expect(second).toMatchObject({
+        providerEventId: secondEvent.id,
+        paymentId: scenario.payment.id,
+        duplicate: false,
+        ignored: false,
+      });
+
+      expect(
+        (
+          await prisma.payment.findUniqueOrThrow({
+            where: {
+              id: scenario.payment.id,
+            },
+          })
+        ).status,
+      ).toBe(PaymentStatus.REFUND_PENDING);
+
+      expect(
+        (
+          await prisma.purchase.findUniqueOrThrow({
+            where: {
+              id: scenario.purchase.id,
+            },
+          })
+        ).status,
+      ).toBe(PurchaseStatus.REFUND_PENDING);
+
+      expect(createRefundSpy).toHaveBeenCalledTimes(1);
+      expect(
+        await prisma.ticket.count({
+          where: {
+            purchaseId: scenario.purchase.id,
+          },
+        }),
+      ).toBe(0);
+    } finally {
+      createRefundSpy.mockRestore();
+    }
+  });
+
+
+  it('keeps a completed purchase completed when a distinct succeeded event arrives after cutoff', async () => {
+    const scenario = await createScenario(1);
+
+    const firstEvent = buildEvent({
+      id: `evt_complete_first_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.succeeded',
+      paymentIntent: buildPaymentIntent({
+        paymentId: scenario.payment.id,
+        amountMinor: 100,
+        status: 'succeeded',
+      }),
+    });
+    const firstSigned = signEvent(firstEvent);
+
+    await service.handle(
+      firstSigned.rawBody,
+      firstSigned.signature,
+    );
+
+    expect(
+      (
+        await prisma.purchase.findUniqueOrThrow({
+          where: {
+            id: scenario.purchase.id,
+          },
+        })
+      ).status,
+    ).toBe(PurchaseStatus.COMPLETED);
+
+    await prisma.lotteryDraw.update({
+      where: {
+        id: scenario.draw.id,
+      },
+      data: {
+        scheduledDrawAt: new Date(
+          Date.now() + 5 * 60 * 1000,
+        ),
+      },
+    });
+
+    const secondEvent = buildEvent({
+      id: `evt_complete_second_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.succeeded',
+      paymentIntent: firstEvent.data.object as Stripe.PaymentIntent,
+    });
+    const secondSigned = signEvent(secondEvent);
+
+    const createRefundSpy = jest.spyOn(
+      StripeClient.prototype,
+      'createRefund',
+    );
+
+    try {
+      const second = await service.handle(
+        secondSigned.rawBody,
+        secondSigned.signature,
+      );
+
+      expect(second).toMatchObject({
+        providerEventId: secondEvent.id,
+        paymentId: scenario.payment.id,
+        duplicate: false,
+        ignored: false,
+      });
+
+      expect(
+        (
+          await prisma.payment.findUniqueOrThrow({
+            where: {
+              id: scenario.payment.id,
+            },
+          })
+        ).status,
+      ).toBe(PaymentStatus.SUCCEEDED);
+
+      expect(
+        (
+          await prisma.purchase.findUniqueOrThrow({
+            where: {
+              id: scenario.purchase.id,
+            },
+          })
+        ).status,
+      ).toBe(PurchaseStatus.COMPLETED);
+
+      expect(
+        await prisma.ticket.count({
+          where: {
+            purchaseId: scenario.purchase.id,
+          },
+        }),
+      ).toBe(1);
+
+      expect(createRefundSpy).not.toHaveBeenCalled();
+    } finally {
+      createRefundSpy.mockRestore();
+    }
+  });
+
+
+  it('allows a failed Stripe PaymentIntent to succeed later without creating a second payment', async () => {
+    const scenario = await createScenario(1);
+
+    const failedIntent = buildPaymentIntent({
+      paymentId: scenario.payment.id,
+      amountMinor: 100,
+      status: 'requires_payment_method',
+      failureCode: 'card_declined',
+      failureMessage: 'Card declined',
+    });
+
+    const attempt = await prisma.paymentAttempt.create({
+      data: {
+        paymentId: scenario.payment.id,
+        attemptNumber: 1,
+        idempotencyKey:
+          `retry-attempt-${randomUUID()}`,
+        providerSessionId: failedIntent.id,
+        status: 'PENDING',
+      },
+    });
+
+    const failedEvent = buildEvent({
+      id: `evt_retry_failed_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.payment_failed',
+      paymentIntent: failedIntent,
+    });
+    const failedSigned = signEvent(failedEvent);
+
+    await service.handle(
+      failedSigned.rawBody,
+      failedSigned.signature,
+    );
+
+    expect(
+      (
+        await prisma.payment.findUniqueOrThrow({
+          where: { id: scenario.payment.id },
+        })
+      ).status,
+    ).toBe(PaymentStatus.FAILED);
+
+    expect(
+      (
+        await prisma.paymentAttempt.findUniqueOrThrow({
+          where: { id: attempt.id },
+        })
+      ).status,
+    ).toBe('PENDING');
+
+    const succeededIntent = {
+      ...buildPaymentIntent({
+        paymentId: scenario.payment.id,
+        amountMinor: 100,
+        status: 'succeeded',
+      }),
+      id: failedIntent.id,
+    } as Stripe.PaymentIntent;
+
+    const succeededEvent = buildEvent({
+      id: `evt_retry_succeeded_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.succeeded',
+      paymentIntent: succeededIntent,
+    });
+    const succeededSigned = signEvent(
+      succeededEvent,
+    );
+
+    await service.handle(
+      succeededSigned.rawBody,
+      succeededSigned.signature,
+    );
+
+    const [
+      payment,
+      purchase,
+      updatedAttempt,
+      tickets,
+    ] = await Promise.all([
+      prisma.payment.findUniqueOrThrow({
+        where: { id: scenario.payment.id },
+      }),
+      prisma.purchase.findUniqueOrThrow({
+        where: { id: scenario.purchase.id },
+      }),
+      prisma.paymentAttempt.findUniqueOrThrow({
+        where: { id: attempt.id },
+      }),
+      prisma.ticket.count({
+        where: {
+          purchaseId: scenario.purchase.id,
+        },
+      }),
+    ]);
+
+    expect(payment.status).toBe(
+      PaymentStatus.SUCCEEDED,
+    );
+    expect(purchase.status).toBe(
+      PurchaseStatus.COMPLETED,
+    );
+    expect(updatedAttempt.status).toBe(
+      'SUCCEEDED',
+    );
+    expect(updatedAttempt.finishedAt).not.toBeNull();
+    expect(tickets).toBe(1);
+  });
+
+  it('ignores a stale failed event after payment success instead of downgrading the payment', async () => {
+    const scenario = await createScenario(1);
+
+    const succeededIntent = buildPaymentIntent({
+      paymentId: scenario.payment.id,
+      amountMinor: 100,
+      status: 'succeeded',
+    });
+
+    const succeededEvent = buildEvent({
+      id: `evt_stale_success_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.succeeded',
+      paymentIntent: succeededIntent,
+    });
+
+    const succeededSigned = signEvent(
+      succeededEvent,
+    );
+
+    await service.handle(
+      succeededSigned.rawBody,
+      succeededSigned.signature,
+    );
+
+    const failedIntent = {
+      ...buildPaymentIntent({
+        paymentId: scenario.payment.id,
+        amountMinor: 100,
+        status: 'requires_payment_method',
+        failureCode: 'card_declined',
+      }),
+      id: succeededIntent.id,
+    } as Stripe.PaymentIntent;
+
+    const staleFailedEvent = buildEvent({
+      id: `evt_stale_failed_${randomUUID().replaceAll('-', '')}`,
+      type: 'payment_intent.payment_failed',
+      paymentIntent: failedIntent,
+    });
+    const staleFailedSigned = signEvent(
+      staleFailedEvent,
+    );
+
+    await service.handle(
+      staleFailedSigned.rawBody,
+      staleFailedSigned.signature,
+    );
+
+    expect(
+      (
+        await prisma.payment.findUniqueOrThrow({
+          where: { id: scenario.payment.id },
+        })
+      ).status,
+    ).toBe(PaymentStatus.SUCCEEDED);
+
+    expect(
+      (
+        await prisma.purchase.findUniqueOrThrow({
+          where: { id: scenario.purchase.id },
+        })
+      ).status,
+    ).toBe(PurchaseStatus.COMPLETED);
+
+    expect(
+      await prisma.ticket.count({
+        where: {
+          purchaseId: scenario.purchase.id,
+        },
+      }),
+    ).toBe(1);
+
+    expect(
+      (
+        await prisma.webhookEvent.findUniqueOrThrow({
+          where: {
+            provider_providerEventId: {
+              provider: 'STRIPE',
+              providerEventId:
+                staleFailedEvent.id,
             },
           },
         })

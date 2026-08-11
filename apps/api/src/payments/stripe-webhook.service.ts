@@ -5,7 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  PaymentAttemptStatus,
   PaymentStatus,
+  PurchaseStatus,
   Prisma,
   WebhookStatus,
 } from '@prisma/client';
@@ -14,6 +16,7 @@ import {
 } from 'node:crypto';
 import type Stripe from 'stripe';
 
+import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentOrchestratorService } from './payment-orchestrator.service';
 import { StripeClient } from './stripe.client';
@@ -227,7 +230,29 @@ export class StripeWebhookService {
       paymentIntent,
     );
 
-    const confirmedAt =
+
+    if (
+      payment.status === PaymentStatus.REFUND_PENDING ||
+      payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
+      payment.status === PaymentStatus.REFUNDED
+    ) {
+      return {
+        paymentId: payment.id,
+        ignored: false,
+      };
+    }
+
+    if (
+      payment.status !== PaymentStatus.CREATED &&
+      payment.status !== PaymentStatus.PENDING &&
+      payment.status !== PaymentStatus.FAILED &&
+      payment.status !== PaymentStatus.SUCCEEDED
+    ) {
+      throw new ConflictException(
+        `Payment in ${payment.status} cannot transition to SUCCEEDED`,
+      );
+    }
+const confirmedAt =
       new Date(
         eventCreatedSeconds *
           1000,
@@ -254,6 +279,86 @@ export class StripeWebhookService {
           ),
       },
     });
+
+
+    await this.prisma.paymentAttempt.updateMany({
+      where: {
+        paymentId: payment.id,
+        providerSessionId: paymentIntent.id,
+        status: {
+          in: [
+            PaymentAttemptStatus.CREATED,
+            PaymentAttemptStatus.PENDING,
+            PaymentAttemptStatus.FAILED,
+          ],
+        },
+      },
+      data: {
+        status: PaymentAttemptStatus.SUCCEEDED,
+        failureCode: null,
+        failureMessage: null,
+        responsePayload:
+          this.buildProviderData(paymentIntent),
+        finishedAt: confirmedAt,
+      },
+    });
+
+    const purchase =
+      await this.prisma.purchase.findUnique({
+        where: {
+          id: payment.purchaseId,
+        },
+        select: {
+          id: true,
+          status: true,
+          draw: {
+            select: {
+              status: true,
+              salesOpenAt: true,
+              salesCloseAt: true,
+              scheduledDrawAt: true,
+            },
+          },
+        },
+      });
+
+    if (!purchase) {
+      throw new NotFoundException(
+        'Purchase not found for succeeded payment',
+      );
+    }
+    if (
+      payment.status === PaymentStatus.SUCCEEDED &&
+      purchase.status === PurchaseStatus.COMPLETED
+    ) {
+      return {
+        paymentId: payment.id,
+        ignored: false,
+      };
+    }
+
+
+
+    const salesBlockReason =
+      ticketSalesBlockReason(
+        purchase.draw,
+        new Date(),
+      );
+
+    if (salesBlockReason) {
+      await this.stripeRefundService
+        .requestLatePaymentRefund(
+          payment.id,
+        );
+
+      return {
+        paymentId:
+          payment.id,
+        ignored:
+          false,
+      };
+    }
+
 
     await this.paymentOrchestrator.confirmPayment(
       payment.id,
@@ -285,15 +390,27 @@ export class StripeWebhookService {
     );
 
     if (
-      payment.status ===
-      PaymentStatus.SUCCEEDED
+      payment.status === PaymentStatus.SUCCEEDED ||
+      payment.status === PaymentStatus.REFUND_PENDING ||
+      payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
+      payment.status === PaymentStatus.REFUNDED
     ) {
-      throw new ConflictException(
-        'A succeeded payment cannot be downgraded by a failed Stripe event',
-      );
+      return {
+        paymentId: payment.id,
+        ignored: false,
+      };
     }
 
-    await this.prisma.payment.update({
+    if (
+      payment.status !== PaymentStatus.CREATED &&
+      payment.status !== PaymentStatus.PENDING &&
+      payment.status !== PaymentStatus.FAILED
+    ) {
+      throw new ConflictException(
+        `Payment in ${payment.status} cannot transition to FAILED`,
+      );
+    }
+await this.prisma.payment.update({
       where: {
         id:
           payment.id,
@@ -314,6 +431,37 @@ export class StripeWebhookService {
             ?.message ??
           null,
         providerData:
+          this.buildProviderData(
+            paymentIntent,
+          ),
+      },
+    });
+
+
+    await this.prisma.paymentAttempt.updateMany({
+      where: {
+        paymentId: payment.id,
+        providerSessionId: paymentIntent.id,
+        status: {
+          in: [
+            PaymentAttemptStatus.CREATED,
+            PaymentAttemptStatus.PENDING,
+            PaymentAttemptStatus.FAILED,
+          ],
+        },
+      },
+      data: {
+        failureCode:
+          paymentIntent
+            .last_payment_error
+            ?.code ??
+          null,
+        failureMessage:
+          paymentIntent
+            .last_payment_error
+            ?.message ??
+          null,
+        responsePayload:
           this.buildProviderData(
             paymentIntent,
           ),
