@@ -75,7 +75,9 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
     return { user, draw, purchase };
   }
 
-  async function issueTicket(fixture: Awaited<ReturnType<typeof createFixture>>) {
+  async function issueTicket(
+    fixture: Awaited<ReturnType<typeof createFixture>>,
+  ) {
     return prisma.ticket.create({
       data: {
         publicId: `TKT-SEC001-${randomUUID()}`,
@@ -160,5 +162,42 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
         },
       }),
     ).rejects.toThrow();
+  });
+
+  it('uses wall-clock time even when the transaction started before cutoff', async () => {
+    const hardCutoffAt = new Date(Date.now() + 3_000);
+    const fixture = await createFixture({
+      scheduledDrawAt: new Date(
+        hardCutoffAt.getTime() + 10 * 60 * 1000,
+      ),
+    });
+
+    await expect(
+      prisma.$transaction(async (tx) => {
+        const [{ transactionStartedAt }] = await tx.$queryRaw<
+          { transactionStartedAt: Date }[]
+        >`
+          SELECT transaction_timestamp() AS "transactionStartedAt"
+        `;
+
+        expect(
+          transactionStartedAt.getTime(),
+        ).toBeLessThan(hardCutoffAt.getTime());
+
+        await new Promise((resolve) => setTimeout(resolve, 3_500));
+
+        return tx.ticket.create({
+          data: {
+            publicId: `TKT-SEC001-WALLCLOCK-${randomUUID()}`,
+            userId: fixture.user.id,
+            purchaseId: fixture.purchase.id,
+            drawId: fixture.draw.id,
+            numberInDraw: 1n,
+          },
+        });
+      }),
+    ).rejects.toThrow(
+      'Tickets cannot be issued after the hard sales cutoff',
+    );
   });
 });
