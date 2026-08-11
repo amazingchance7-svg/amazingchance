@@ -335,6 +335,275 @@ describe('Stripe refund pipeline', () => {
     expect(creditTotal).toBe(100n);
   });
 
+
+  it('requests automatic refund for a succeeded late payment without allocating tickets or jackpot', async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: 'late-payment@example.com',
+        passwordHash: 'test-password-hash',
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    const draw = await prisma.lotteryDraw.create({
+      data: {
+        publicId: 'weekly-late-payment-test',
+        type: 'WEEKLY',
+        status: DrawStatus.SALES_OPEN,
+        sequenceNumber: 93002,
+        scheduledDrawAt: new Date(
+          Date.now() + 60 * 60 * 1000,
+        ),
+        currency: 'USD',
+        ticketPriceMinor: 100n,
+      },
+    });
+
+    const purchase = await prisma.purchase.create({
+      data: {
+        publicId: 'purchase-late-payment-test',
+        userId: user.id,
+        drawId: draw.id,
+        status: PurchaseStatus.PAYMENT_PENDING,
+        requestedTicketCount: 1,
+        ticketPriceMinor: 100n,
+        totalAmountMinor: 100n,
+        currency: 'USD',
+        idempotencyKey:
+          'purchase-late-payment-test-key',
+      },
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        purchaseId: purchase.id,
+        provider: 'STRIPE',
+        providerTransactionId:
+          'pi_late_payment_test',
+        status: PaymentStatus.SUCCEEDED,
+        amountMinor: 100n,
+        currency: 'USD',
+        confirmedAt: new Date(),
+      },
+    });
+
+    const pending = refund('pending');
+    pending.payment_intent =
+      'pi_late_payment_test';
+    pending.metadata = {
+      paymentId: payment.id,
+      purchaseId: purchase.id,
+    };
+
+    stripeClient.createRefund.mockResolvedValue(
+      pending,
+    );
+
+    const result =
+      await service.requestLatePaymentRefund(
+        payment.id,
+      );
+
+    expect(result).toMatchObject({
+      purchaseId: purchase.id,
+      paymentId: payment.id,
+      refundId: 're_refund_test',
+      status: 'pending',
+    });
+
+    const [
+      updatedPurchase,
+      updatedPayment,
+      receivedLedger,
+      allocationLedger,
+    ] = await Promise.all([
+      prisma.purchase.findUniqueOrThrow({
+        where: { id: purchase.id },
+      }),
+      prisma.payment.findUniqueOrThrow({
+        where: { id: payment.id },
+      }),
+      prisma.ledgerTransaction.findUnique({
+        where: {
+          idempotencyKey:
+            `late-payment-received:${payment.id}`,
+        },
+        include: { postings: true },
+      }),
+      prisma.ledgerTransaction.findUnique({
+        where: {
+          idempotencyKey:
+            `payment-allocated:${payment.id}`,
+        },
+      }),
+    ]);
+
+    expect(updatedPurchase.status).toBe(
+      PurchaseStatus.REFUND_PENDING,
+    );
+    expect(updatedPayment.status).toBe(
+      PaymentStatus.REFUND_PENDING,
+    );
+    expect(receivedLedger).not.toBeNull();
+    expect(allocationLedger).toBeNull();
+    expect(
+      await prisma.ticket.count({
+        where: { purchaseId: purchase.id },
+      }),
+    ).toBe(0);
+
+    expect(stripeClient.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentIntentId:
+          'pi_late_payment_test',
+        paymentId: payment.id,
+        purchaseId: purchase.id,
+        idempotencyKey:
+          `late-payment-refund:${payment.id}`,
+      }),
+    );
+  });
+
+  it('completes late-payment refund directly from payment clearing without jackpot reversal', async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: 'late-payment-complete@example.com',
+        passwordHash: 'test-password-hash',
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    const draw = await prisma.lotteryDraw.create({
+      data: {
+        publicId:
+          'weekly-late-payment-complete-test',
+        type: 'WEEKLY',
+        status: DrawStatus.SALES_OPEN,
+        sequenceNumber: 93003,
+        scheduledDrawAt: new Date(
+          Date.now() + 60 * 60 * 1000,
+        ),
+        currency: 'USD',
+        ticketPriceMinor: 100n,
+      },
+    });
+
+    const purchase = await prisma.purchase.create({
+      data: {
+        publicId:
+          'purchase-late-payment-complete-test',
+        userId: user.id,
+        drawId: draw.id,
+        status: PurchaseStatus.PAYMENT_PENDING,
+        requestedTicketCount: 1,
+        ticketPriceMinor: 100n,
+        totalAmountMinor: 100n,
+        currency: 'USD',
+        idempotencyKey:
+          'purchase-late-payment-complete-key',
+      },
+    });
+
+    const payment = await prisma.payment.create({
+      data: {
+        purchaseId: purchase.id,
+        provider: 'STRIPE',
+        providerTransactionId:
+          'pi_late_payment_complete',
+        status: PaymentStatus.SUCCEEDED,
+        amountMinor: 100n,
+        currency: 'USD',
+        confirmedAt: new Date(),
+      },
+    });
+
+    const pending = refund('pending');
+    pending.payment_intent =
+      'pi_late_payment_complete';
+    pending.metadata = {
+      paymentId: payment.id,
+      purchaseId: purchase.id,
+    };
+    stripeClient.createRefund.mockResolvedValue(
+      pending,
+    );
+
+    await service.requestLatePaymentRefund(
+      payment.id,
+    );
+
+    const succeeded = refund('succeeded');
+    succeeded.payment_intent =
+      'pi_late_payment_complete';
+    succeeded.metadata = {
+      paymentId: payment.id,
+      purchaseId: purchase.id,
+    };
+
+    const result =
+      await service.processRefundEvent(
+        succeeded,
+      );
+
+    expect(result).toEqual({
+      paymentId: payment.id,
+      completed: true,
+      failed: false,
+    });
+
+    const [
+      updatedPurchase,
+      updatedPayment,
+      refundLedger,
+      allocationLedger,
+    ] = await Promise.all([
+      prisma.purchase.findUniqueOrThrow({
+        where: { id: purchase.id },
+      }),
+      prisma.payment.findUniqueOrThrow({
+        where: { id: payment.id },
+      }),
+      prisma.ledgerTransaction.findUniqueOrThrow({
+        where: {
+          idempotencyKey:
+            `late-payment-refund-completed:${payment.id}`,
+        },
+        include: { postings: true },
+      }),
+      prisma.ledgerTransaction.findUnique({
+        where: {
+          idempotencyKey:
+            `payment-allocated:${payment.id}`,
+        },
+      }),
+    ]);
+
+    expect(updatedPurchase.status).toBe(
+      PurchaseStatus.REFUNDED,
+    );
+    expect(updatedPayment.status).toBe(
+      PaymentStatus.REFUNDED,
+    );
+    expect(allocationLedger).toBeNull();
+
+    expect(refundLedger.postings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.PAYMENT_CLEARING,
+          side: LedgerSide.DEBIT,
+          amountMinor: 100n,
+        }),
+        expect.objectContaining({
+          accountCode:
+            LedgerAccountCode.CASH,
+          side: LedgerSide.CREDIT,
+          amountMinor: 100n,
+        }),
+      ]),
+    );
+  });
+
   it('blocks refund after a ticket snapshot exists', async () => {
     const { purchase, draw } = await fixture();
 

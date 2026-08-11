@@ -14,6 +14,7 @@ import {
 import type Stripe from 'stripe';
 
 import { createCorrelationId } from '../common/utils/identifier.util';
+import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeClient } from './stripe.client';
 
@@ -531,43 +532,15 @@ export class StripePaymentIntentService {
       );
     }
 
-    if (
-      purchase.draw.status !==
-      DrawStatus.SALES_OPEN
-    ) {
-      throw new ConflictException(
-        'Ticket sales are not open for this draw',
-      );
-    }
+    const reason = ticketSalesBlockReason(
+      purchase.draw,
+      now,
+    );
 
-    if (
-      purchase.draw.salesOpenAt &&
-      now < purchase.draw.salesOpenAt
-    ) {
-      throw new ConflictException(
-        'Ticket sales have not started yet',
-      );
-    }
-
-    if (
-      purchase.draw.salesCloseAt &&
-      now >= purchase.draw.salesCloseAt
-    ) {
-      throw new ConflictException(
-        'Ticket sales are already closed',
-      );
-    }
-
-    if (
-      now >=
-      purchase.draw.scheduledDrawAt
-    ) {
-      throw new ConflictException(
-        'The scheduled draw time has already passed',
-      );
+    if (reason) {
+      throw new ConflictException(reason);
     }
   }
-
   private assertProviderIntent(
     paymentIntent:
       Stripe.PaymentIntent,
