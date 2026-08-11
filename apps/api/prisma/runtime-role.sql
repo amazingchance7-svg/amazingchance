@@ -50,6 +50,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE
 ON ALL TABLES IN SCHEMA public
 TO amazing_chance_runtime;
 
+-- Audit evidence is append-only.
+REVOKE UPDATE, DELETE
+ON TABLE "audit_logs"
+FROM amazing_chance_runtime;
+
 -- Migration history is administrative metadata only.
 REVOKE ALL PRIVILEGES
 ON TABLE "_prisma_migrations"
