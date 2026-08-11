@@ -239,6 +239,17 @@ describe('Public draw result integration', () => {
       2n,
     ];
 
+    // SEC005_FIXTURE_WINNER_PENDING
+    await prisma.lotteryDraw.update({
+      where: {
+        id: draw.id,
+      },
+      data: {
+        status:
+          DrawStatus
+            .WINNER_SELECTION_PENDING,
+      },
+    });
     for (
       let index = 0;
       index < positions.length;
@@ -506,50 +517,42 @@ describe('Public draw result integration', () => {
     });
   });
 
-  it('rejects a published draw without verified randomness evidence', async () => {
+  it('prevents downgrading verified randomness for a published draw', async () => {
     const scenario =
       await createScenario();
 
-    await prisma.randomnessEvidence.update({
-      where: {
-        id:
-          scenario.randomness.id,
-      },
-      data: {
-        status:
-          RandomnessStatus.RECEIVED,
-      },
-    });
-
     await expect(
-      publicResult.findPublishedByDrawId(
-        scenario.draw.id,
-      ),
+      prisma.randomnessEvidence.update({
+        where: {
+          id:
+            scenario.randomness.id,
+        },
+        data: {
+          status:
+            RandomnessStatus.RECEIVED,
+        },
+      }),
     ).rejects.toThrow(
-      'Published lottery draw result is missing verified randomness evidence',
+      'Terminal randomness evidence is immutable',
     );
   });
-
-  it('rejects a published draw with an incomplete winner set', async () => {
+  it('prevents deleting a winner from a published draw', async () => {
     const scenario =
       await createScenario();
 
-    await prisma.drawWinner.delete({
-      where: {
-        drawId_rank: {
-          drawId:
-            scenario.draw.id,
-          rank: 3,
-        },
-      },
-    });
-
     await expect(
-      publicResult.findPublishedByDrawId(
-        scenario.draw.id,
-      ),
+      prisma.drawWinner.delete({
+        where: {
+          drawId_rank: {
+            drawId:
+              scenario.draw.id,
+            rank:
+              3,
+          },
+        },
+      }),
     ).rejects.toThrow(
-      'Published lottery draw result is missing winners',
+      'Draw winners are immutable and cannot be deleted',
     );
   });
 });
