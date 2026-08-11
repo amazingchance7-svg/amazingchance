@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 
 import { PaginatedResult } from '../common/types/paginated-result.type';
+import { scheduledSalesCutoffAt } from './sales-window.policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLotteryDrawDto } from './dto/create-lottery-draw.dto';
 import { ListLotteryDrawsDto } from './dto/list-lottery-draws.dto';
@@ -279,10 +280,18 @@ export class LotteryDrawsService {
       );
     }
 
-    if (salesCloseAt && new Date(salesCloseAt) >= scheduledDate) {
-      throw new BadRequestException(
-        'salesCloseAt must be earlier than scheduledDrawAt',
-      );
+    if (salesCloseAt) {
+      const closeDate = new Date(salesCloseAt);
+      const hardCutoff =
+        scheduledSalesCutoffAt(
+          scheduledDate,
+        );
+
+      if (closeDate > hardCutoff) {
+        throw new BadRequestException(
+          'salesCloseAt must be at least 10 minutes before scheduledDrawAt',
+        );
+      }
     }
 
     if (

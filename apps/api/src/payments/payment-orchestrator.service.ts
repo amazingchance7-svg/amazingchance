@@ -18,6 +18,7 @@ import {
   createCorrelationId,
   createPublicId,
 } from '../common/utils/identifier.util';
+import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { FinancialAllocationService } from '../finance/financial-allocation.service';
 import { LedgerService } from '../ledger/ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +36,9 @@ export type ConfirmPaymentResult = {
 
 type LockedDrawRow = {
   status: DrawStatus;
+  salesOpenAt: Date | null;
+  salesCloseAt: Date | null;
+  scheduledDrawAt: Date;
 };
 
 const MAX_TRANSACTION_ATTEMPTS = 3;
@@ -171,7 +175,11 @@ export class PaymentOrchestratorService {
           await tx.$queryRaw<
             LockedDrawRow[]
           >`
-            SELECT "status"
+            SELECT
+              "status",
+              "salesOpenAt",
+              "salesCloseAt",
+              "scheduledDrawAt"
             FROM "lottery_draws"
             WHERE "id" = ${purchase.drawId}::uuid
             FOR SHARE
@@ -195,6 +203,21 @@ export class PaymentOrchestratorService {
           );
         }
 
+        const confirmedAt =
+          payment.confirmedAt ??
+          payment.createdAt;
+
+        const salesBlockReason =
+          ticketSalesBlockReason(
+            draw,
+            confirmedAt,
+          );
+
+        if (salesBlockReason) {
+          throw new ConflictException(
+            `Paid purchase is outside the ticket sales window: ${salesBlockReason}`,
+          );
+        }
         const correlationId =
           createCorrelationId();
 

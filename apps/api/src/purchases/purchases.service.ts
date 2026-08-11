@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -17,6 +16,7 @@ import {
   createCorrelationId,
   createPublicId,
 } from '../common/utils/identifier.util';
+import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import {
@@ -380,41 +380,15 @@ export class PurchasesService {
       scheduledDrawAt: Date;
     },
   ): void {
-    const now = new Date();
+    const reason = ticketSalesBlockReason(
+      draw,
+      new Date(),
+    );
 
-    if (
-      draw.status !== DrawStatus.SALES_OPEN
-    ) {
-      throw new ConflictException(
-        'Ticket sales are not open for this draw',
-      );
-    }
-
-    if (
-      draw.salesOpenAt &&
-      now < draw.salesOpenAt
-    ) {
-      throw new ConflictException(
-        'Ticket sales have not started yet',
-      );
-    }
-
-    if (
-      draw.salesCloseAt &&
-      now >= draw.salesCloseAt
-    ) {
-      throw new ConflictException(
-        'Ticket sales are already closed',
-      );
-    }
-
-    if (now >= draw.scheduledDrawAt) {
-      throw new BadRequestException(
-        'The scheduled draw time has already passed',
-      );
+    if (reason) {
+      throw new ConflictException(reason);
     }
   }
-
   private serialize(
     purchase: Purchase,
   ): SerializedPurchase {
