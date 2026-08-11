@@ -12,6 +12,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 describe('Admin operations backoffice', () => {
   let prisma: PrismaService;
@@ -152,6 +156,15 @@ describe('Admin operations backoffice', () => {
       },
     });
 
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: purchase.id,
+        drawId: draw.id,
+        numberInDraw: 1n,
+      },
+    );
+
     await prisma.ticket.create({
       data: {
         publicId: 'ticket-admin-overview',
@@ -238,6 +251,15 @@ describe('Admin operations backoffice', () => {
         completedAt: new Date(),
       },
     });
+
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: purchase.id,
+        drawId: draw.id,
+        numberInDraw: 44n,
+      },
+    );
 
     await prisma.ticket.create({
       data: {

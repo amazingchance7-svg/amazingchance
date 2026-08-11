@@ -17,6 +17,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 const OWNER_SECRET =
   'integration-snapshot-owner-secret-at-least-32-bytes';
@@ -113,6 +117,15 @@ describe('Public verification integration', () => {
       index <= ticketCount;
       index += 1
     ) {
+      await ensureTestTicketAllocation(
+        prisma,
+        {
+          purchaseId: purchase.id,
+          drawId: draw.id,
+          numberInDraw: BigInt(index),
+        },
+      );
+
       tickets.push(
         await prisma.ticket.create({
           data: {

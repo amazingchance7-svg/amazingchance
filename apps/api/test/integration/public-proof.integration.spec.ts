@@ -8,6 +8,10 @@ import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.ser
 import { SnapshotCryptographyService } from '../../src/snapshots/snapshot-cryptography.service';
 import { SnapshotFinalizerService } from '../../src/snapshots/snapshot-finalizer.service';
 import { cleanTestDatabase, createTestPrisma } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 const OWNER_SECRET = 'integration-snapshot-owner-secret-at-least-32-bytes';
 
@@ -77,6 +81,15 @@ describe('Public proof integration', () => {
 
     const tickets = [];
     for (let index = 1; index <= ticketCount; index += 1) {
+      await ensureTestTicketAllocation(
+        prisma,
+        {
+          purchaseId: purchase.id,
+          drawId: draw.id,
+          numberInDraw: BigInt(index),
+        },
+      );
+
       tickets.push(
         await prisma.ticket.create({
           data: {

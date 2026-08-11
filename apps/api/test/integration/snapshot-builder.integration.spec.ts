@@ -15,6 +15,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 const OWNER_SECRET =
   'integration-snapshot-owner-secret-at-least-32-bytes';
@@ -104,6 +108,15 @@ describe('Snapshot builder integration', () => {
       },
     });
 
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: secondPurchase.id,
+        drawId: draw.id,
+        numberInDraw: 3n,
+      },
+    );
+
     const ticketThree = await prisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
@@ -114,6 +127,15 @@ describe('Snapshot builder integration', () => {
       },
     });
 
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: firstPurchase.id,
+        drawId: draw.id,
+        numberInDraw: 1n,
+      },
+    );
+
     const ticketOne = await prisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
@@ -123,6 +145,15 @@ describe('Snapshot builder integration', () => {
         numberInDraw: 1n,
       },
     });
+
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: firstPurchase.id,
+        drawId: draw.id,
+        numberInDraw: 2n,
+      },
+    );
 
     const ticketTwo = await prisma.ticket.create({
       data: {
@@ -310,6 +341,15 @@ describe('Snapshot builder integration', () => {
         completedAt: new Date(),
       },
     });
+
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: secondDrawPurchase.id,
+        drawId: secondDraw.id,
+        numberInDraw: 1n,
+      },
+    );
 
     await prisma.ticket.create({
       data: {

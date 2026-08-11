@@ -14,6 +14,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  ensureTestTicketAllocation,
+} from './ticket-fixture.helper';
+
 
 describe('Issued tickets query integration', () => {
   let prisma: PrismaService;
@@ -84,6 +88,15 @@ describe('Issued tickets query integration', () => {
     drawId: string;
     numberInDraw: bigint;
   }) {
+    await ensureTestTicketAllocation(
+      prisma,
+      {
+        purchaseId: input.purchaseId,
+        drawId: input.drawId,
+        numberInDraw: input.numberInDraw,
+      },
+    );
+
     return prisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
@@ -129,6 +142,15 @@ describe('Issued tickets query integration', () => {
     const draw = await createDraw();
     const purchase = await createPurchase(user.id, draw.id);
 
+    await prisma.ticketAllocation.create({
+      data: {
+        purchaseId: purchase.id,
+        drawId: draw.id,
+        startNumber: 21n,
+        endNumber: 22n,
+        correlationId: randomUUID(),
+      },
+    });
     await createTicket({
       userId: user.id,
       purchaseId: purchase.id,
