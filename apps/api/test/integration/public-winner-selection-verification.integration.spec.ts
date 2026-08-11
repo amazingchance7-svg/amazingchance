@@ -271,6 +271,17 @@ describe('Public winner selection verification integration', () => {
         },
       });
 
+    // SEC005_FIXTURE_WINNER_PENDING
+    await prisma.lotteryDraw.update({
+      where: {
+        id: draw.id,
+      },
+      data: {
+        status:
+          DrawStatus
+            .WINNER_SELECTION_PENDING,
+      },
+    });
     for (
       let index = 0;
       index <
@@ -439,42 +450,30 @@ describe('Public winner selection verification integration', () => {
     });
   });
 
-  it('detects a tampered published winner position', async () => {
+  it('prevents tampering with a published winner position', async () => {
     const scenario =
       await createScenario();
 
-    await prisma.drawWinner.update({
-      where: {
-        drawId_rank: {
-          drawId:
-            scenario.draw.id,
-          rank:
-            1,
+    await expect(
+      prisma.drawWinner.update({
+        where: {
+          drawId_rank: {
+            drawId:
+              scenario.draw.id,
+            rank:
+              1,
+          },
         },
-      },
-      data: {
-        randomPosition:
-          3n,
-      },
-    });
-
-    const result =
-      await service.findVerification(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .publishedPositionsMatch,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
+        data: {
+          randomPosition:
+            3n,
+        },
+      }),
+    ).rejects.toThrow(
+      'Draw winners are immutable and cannot be modified',
+    );
   });
-
-  it('detects a tampered published winner ticket', async () => {
+  it('prevents tampering with a published winner ticket', async () => {
     const scenario =
       await createScenario();
 
@@ -490,101 +489,67 @@ describe('Public winner selection verification integration', () => {
       );
     }
 
-    await prisma.drawWinner.update({
-      where: {
-        drawId_rank: {
-          drawId:
-            scenario.draw.id,
-          rank:
-            1,
-        },
-      },
-      data: {
-        ticketId:
-          unusedEntry.ticketId,
-        snapshotEntryId:
-          unusedEntry.id,
-        randomPosition:
-          unusedEntry.position,
-      },
-    });
-
-    const result =
-      await service.findVerification(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .publishedPositionsMatch,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .publishedTicketsMatch,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
-  });
-
-  it('detects an incomplete published winner set', async () => {
-    const scenario =
-      await createScenario();
-
-    await prisma.drawWinner.delete({
-      where: {
-        drawId_rank: {
-          drawId:
-            scenario.draw.id,
-          rank:
-            3,
-        },
-      },
-    });
-
-    const result =
-      await service.findVerification(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .publishedWinnerCountMatches,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
-  });
-
-  it('rejects randomness whose range no longer matches the finalized snapshot', async () => {
-    const scenario =
-      await createScenario();
-
-    await prisma.randomnessEvidence.update({
-      where: {
-        id:
-          scenario.randomness.id,
-      },
-      data: {
-        requestedMax:
-          999n,
-      },
-    });
-
     await expect(
-      service.findVerification(
-        scenario.draw.id,
-      ),
+      prisma.drawWinner.update({
+        where: {
+          drawId_rank: {
+            drawId:
+              scenario.draw.id,
+            rank:
+              1,
+          },
+        },
+        data: {
+          ticketId:
+            unusedEntry.ticketId,
+          snapshotEntryId:
+            unusedEntry.id,
+          randomPosition:
+            unusedEntry.position,
+        },
+      }),
     ).rejects.toThrow(
-      'Verified randomness range does not match the finalized snapshot',
+      'Draw winners are immutable and cannot be modified',
     );
   });
+  it('prevents deleting a published winner', async () => {
+    const scenario =
+      await createScenario();
 
+    await expect(
+      prisma.drawWinner.delete({
+        where: {
+          drawId_rank: {
+            drawId:
+              scenario.draw.id,
+            rank:
+              3,
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Draw winners are immutable and cannot be deleted',
+    );
+  });
+  it('prevents changing the verified randomness range after commitment', async () => {
+    const scenario =
+      await createScenario();
+
+    await expect(
+      prisma.randomnessEvidence.update({
+        where: {
+          id:
+            scenario.randomness.id,
+        },
+        data: {
+          requestedMax:
+            999n,
+        },
+      }),
+    ).rejects.toThrow(
+      'Committed randomness request fields are immutable',
+    );
+  });
   it('does not expose winner selection verification before publication', async () => {
     const scenario =
       await createScenario(false);

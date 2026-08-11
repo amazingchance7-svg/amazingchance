@@ -11,6 +11,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { sha256CanonicalJson } from './randomness-canonical-json.util';
+import { RandomOrgSignedClient } from './random-org-signed.client';
 import {
   RANDOMNESS_BINDING_VERSION,
   type RandomOrgSignedRandom,
@@ -85,6 +86,9 @@ export interface PublicRandomnessEvidence {
     winnerPositionsMatch:
       boolean;
 
+    providerSignatureAuthentic:
+      boolean;
+
     locallyConsistent:
       boolean;
   };
@@ -95,6 +99,8 @@ export class PublicRandomnessVerificationService {
   constructor(
     private readonly prisma:
       PrismaService,
+    private readonly randomOrg:
+      RandomOrgSignedClient,
   ) {}
 
   async findEvidence(
@@ -254,13 +260,21 @@ export class PublicRandomnessVerificationService {
       payloadSignature ===
       randomness.providerSignature;
 
+    const providerSignatureAuthentic =
+      await this.randomOrg.verifySignature({
+        random: signedRandom,
+        signature:
+          payloadSignature,
+      });
+
     const locallyConsistent =
       responseHashMatches &&
       signatureMatchesStoredEvidence &&
       requestParametersMatch &&
       snapshotBindingMatches &&
       randomPositionsMatch &&
-      winnerPositionsMatch;
+      winnerPositionsMatch &&
+      providerSignatureAuthentic;
 
     return {
       version:
@@ -369,6 +383,8 @@ export class PublicRandomnessVerificationService {
         randomPositionsMatch,
 
         winnerPositionsMatch,
+
+        providerSignatureAuthentic,
 
         locallyConsistent,
       },

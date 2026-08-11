@@ -70,6 +70,12 @@ describe('Winner selection integration', () => {
       1,
       3,
     ],
+    options?: {
+      randomnessStatus?: RandomnessStatus;
+      requestedCount?: number;
+      requestedMax?: bigint;
+      signatureVerified?: boolean;
+    },
   ) {
     const user =
       await prisma.user.create({
@@ -179,16 +185,27 @@ describe('Winner selection integration', () => {
           attemptNumber: 1,
           provider: 'RANDOM_ORG',
           status:
+            options?.randomnessStatus ??
             RandomnessStatus.VERIFIED,
           idempotencyKey:
             `randomness-${randomUUID()}`,
           requestedMin: 1n,
-          requestedMax: 5n,
-          requestedCount: 3,
+          requestedMax:
+            options?.requestedMax ??
+            5n,
+          requestedCount:
+            options?.requestedCount ??
+            3,
           requestPayload: {
             min: 1,
-            max: 5,
-            count: 3,
+            max:
+              Number(
+                options?.requestedMax ??
+                  5n,
+              ),
+            count:
+              options?.requestedCount ??
+              3,
           },
           responsePayload: {
             positions:
@@ -198,7 +215,9 @@ describe('Winner selection integration', () => {
             'a'.repeat(64),
           providerSignature:
             'integration-provider-signature',
-          signatureVerified: true,
+          signatureVerified:
+            options?.signatureVerified ??
+            true,
           randomPositions,
           requestedAt: new Date(
             Date.now() - 2_000,
@@ -380,22 +399,18 @@ describe('Winner selection integration', () => {
 
   it('skips duplicate provider positions deterministically', async () => {
     const scenario =
-      await createScenario([
-        2,
-        2,
-        5,
-        2,
-        1,
-      ]);
-
-    await prisma.randomnessEvidence.update({
-      where: {
-        id: scenario.randomness.id,
-      },
-      data: {
-        requestedCount: 5,
-      },
-    });
+      await createScenario(
+        [
+          2,
+          2,
+          5,
+          2,
+          1,
+        ],
+        {
+          requestedCount: 5,
+        },
+      );
 
     const result =
       await winnerSelection.finalize(
@@ -413,20 +428,17 @@ describe('Winner selection integration', () => {
       '1',
     ]);
   });
-
   it('rejects winner selection without verified randomness evidence', async () => {
     const scenario =
-      await createScenario();
-
-    await prisma.randomnessEvidence.update({
-      where: {
-        id: scenario.randomness.id,
-      },
-      data: {
-        status:
-          RandomnessStatus.RECEIVED,
-      },
-    });
+      await createScenario(
+        undefined,
+        {
+          randomnessStatus:
+            RandomnessStatus.RECEIVED,
+          signatureVerified:
+            false,
+        },
+      );
 
     await expect(
       winnerSelection.finalize(
@@ -440,30 +452,27 @@ describe('Winner selection integration', () => {
       await prisma.drawWinner.count(),
     ).toBe(0);
 
-    const draw =
-      await prisma.lotteryDraw.findUniqueOrThrow({
-        where: {
-          id: scenario.draw.id,
-        },
-      });
-
-    expect(draw.status).toBe(
+    expect(
+      (
+        await prisma.lotteryDraw.findUniqueOrThrow({
+          where: {
+            id:
+              scenario.draw.id,
+          },
+        })
+      ).status,
+    ).toBe(
       DrawStatus.RANDOMNESS_VERIFIED,
     );
   });
-
   it('rejects randomness whose range does not match the finalized snapshot', async () => {
     const scenario =
-      await createScenario();
-
-    await prisma.randomnessEvidence.update({
-      where: {
-        id: scenario.randomness.id,
-      },
-      data: {
-        requestedMax: 6n,
-      },
-    });
+      await createScenario(
+        undefined,
+        {
+          requestedMax: 6n,
+        },
+      );
 
     await expect(
       winnerSelection.finalize(
@@ -477,7 +486,6 @@ describe('Winner selection integration', () => {
       await prisma.drawWinner.count(),
     ).toBe(0);
   });
-
   it('rejects winner selection for a draw in the wrong state', async () => {
     const scenario =
       await createScenario();

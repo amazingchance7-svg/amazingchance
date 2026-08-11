@@ -307,6 +307,17 @@ describe('Public randomness verification integration', () => {
         },
       });
 
+    // SEC005_FIXTURE_WINNER_PENDING
+    await prisma.lotteryDraw.update({
+      where: {
+        id: draw.id,
+      },
+      data: {
+        status:
+          DrawStatus
+            .WINNER_SELECTION_PENDING,
+      },
+    });
     for (
       let index = 0;
       index <
@@ -390,12 +401,23 @@ describe('Public randomness verification integration', () => {
     };
   }
 
-  function createService() {
+  function createService(
+    authentic = true,
+  ) {
+    const randomOrg = {
+      verifySignature:
+        jest.fn().mockResolvedValue(
+          authentic,
+        ),
+    };
+
     return {
       service:
         new PublicRandomnessVerificationService(
           prisma,
+          randomOrg as never,
         ),
+      randomOrg,
     };
   }
   it('publishes a locally consistent signed randomness evidence bundle', async () => {
@@ -477,6 +499,8 @@ describe('Public randomness verification integration', () => {
         true,
       winnerPositionsMatch:
         true,
+      providerSignatureAuthentic:
+        true,
       locallyConsistent:
         true,
     });
@@ -506,182 +530,164 @@ describe('Public randomness verification integration', () => {
     ]);
   });
 
-  it('detects tampering with the signed snapshot binding', async () => {
+
+  it('re-verifies the stored RANDOM.ORG signature on every public verification request', async () => {
     const scenario =
       await createScenario();
 
-    const tamperedRandom = {
-      ...scenario.signedRandom,
-      userData: {
-        ...(scenario.signedRandom
-          .userData as Record<
-            string,
-            unknown
-          >),
-        snapshotHash:
-          'f'.repeat(64),
-      },
-    };
+    const {
+      service,
+      randomOrg,
+    } = createService();
 
-    await prisma.randomnessEvidence.update({
-      where: {
-        id:
-          scenario.randomness.id,
-      },
-      data: {
-        responsePayload: {
-          random:
-            tamperedRandom,
-          signature:
-            scenario.providerSignature,
+    await service.findEvidence(
+      scenario.draw.id,
+    );
+
+    await service.findEvidence(
+      scenario.draw.id,
+    );
+
+    expect(
+      randomOrg.verifySignature,
+    ).toHaveBeenCalledTimes(2);
+
+    expect(
+      randomOrg.verifySignature,
+    ).toHaveBeenLastCalledWith({
+      random:
+        scenario.signedRandom,
+      signature:
+        scenario.providerSignature,
+    });
+  });
+
+  it('reports a failed live RANDOM.ORG authenticity check', async () => {
+    const scenario =
+      await createScenario();
+
+    const {
+      service,
+    } = createService(false);
+
+    const result =
+      await service.findEvidence(
+        scenario.draw.id,
+      );
+
+    expect(
+      result.integrity
+        .providerSignatureAuthentic,
+    ).toBe(false);
+
+    expect(
+      result.integrity
+        .locallyConsistent,
+    ).toBe(false);
+  });
+  it('prevents tampering with verified signed snapshot binding evidence', async () => {
+    const scenario =
+      await createScenario();
+
+    await expect(
+      prisma.randomnessEvidence.update({
+        where: {
+          id:
+            scenario.randomness.id,
         },
-      },
-    });
-
-    const {
-      service,
-    } = createService();
-
-    const result =
-      await service.findEvidence(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .snapshotBindingMatches,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .responseHashMatches,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
+        data: {
+          responsePayload: {
+            random: {
+              ...scenario.signedRandom,
+              userData: {
+                ...(scenario.signedRandom
+                  .userData as Record<
+                    string,
+                    unknown
+                  >),
+                snapshotHash:
+                  'f'.repeat(64),
+              },
+            },
+            signature:
+              scenario.providerSignature,
+          },
+        },
+      }),
+    ).rejects.toThrow(
+      'Terminal randomness evidence is immutable',
+    );
   });
-
-  it('detects persisted random positions that differ from the signed provider response', async () => {
+  it('prevents tampering with persisted verified random positions', async () => {
     const scenario =
       await createScenario();
 
-    await prisma.randomnessEvidence.update({
-      where: {
-        id:
-          scenario.randomness.id,
-      },
-      data: {
-        randomPositions: [
-          1,
-          2,
-          3,
-        ],
-      },
-    });
-
-    const {
-      service,
-    } = createService();
-
-    const result =
-      await service.findEvidence(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .randomPositionsMatch,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
-  });
-
-  it('detects winner positions that differ from the signed provider positions', async () => {
-    const scenario =
-      await createScenario();
-
-    await prisma.drawWinner.update({
-      where: {
-        drawId_rank: {
-          drawId:
-            scenario.draw.id,
-          rank:
+    await expect(
+      prisma.randomnessEvidence.update({
+        where: {
+          id:
+            scenario.randomness.id,
+        },
+        data: {
+          randomPositions: [
             1,
+            2,
+            3,
+          ],
         },
-      },
-      data: {
-        randomPosition:
-          99n,
-      },
-    });
-
-    const {
-      service,
-    } = createService();
-
-    const result =
-      await service.findEvidence(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .winnerPositionsMatch,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
+      }),
+    ).rejects.toThrow(
+      'Terminal randomness evidence is immutable',
+    );
   });
-
-  it('detects a mismatch between payload signature and persisted signature', async () => {
+  it('prevents modifying persisted draw winners', async () => {
     const scenario =
       await createScenario();
 
-    await prisma.randomnessEvidence.update({
-      where: {
-        id:
-          scenario.randomness.id,
-      },
-      data: {
-        responsePayload:
-          JSON.parse(
-            JSON.stringify({
-              random:
-                scenario.signedRandom,
-              signature:
-                'different-signature',
-            }),
-          ),
-      },
-    });
-
-    const {
-      service,
-    } = createService();
-
-    const result =
-      await service.findEvidence(
-        scenario.draw.id,
-      );
-
-    expect(
-      result.integrity
-        .signatureMatchesStoredEvidence,
-    ).toBe(false);
-
-    expect(
-      result.integrity
-        .locallyConsistent,
-    ).toBe(false);
+    await expect(
+      prisma.drawWinner.update({
+        where: {
+          drawId_rank: {
+            drawId:
+              scenario.draw.id,
+            rank: 1,
+          },
+        },
+        data: {
+          randomPosition:
+            99n,
+        },
+      }),
+    ).rejects.toThrow(
+      'Draw winners are immutable and cannot be modified',
+    );
   });
+  it('prevents tampering with the persisted provider signature payload', async () => {
+    const scenario =
+      await createScenario();
 
+    await expect(
+      prisma.randomnessEvidence.update({
+        where: {
+          id:
+            scenario.randomness.id,
+        },
+        data: {
+          responsePayload:
+            JSON.parse(
+              JSON.stringify({
+                random:
+                  scenario.signedRandom,
+                signature:
+                  'different-signature',
+              }),
+            ),
+        },
+      }),
+    ).rejects.toThrow(
+      'Terminal randomness evidence is immutable',
+    );
+  });
   it('does not expose randomness evidence before the draw is published', async () => {
     const scenario =
       await createScenario(false);
