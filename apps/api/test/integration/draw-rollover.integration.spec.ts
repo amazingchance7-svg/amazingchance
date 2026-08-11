@@ -276,6 +276,59 @@ describe('SEC-002 weekly draw rollover integration', () => {
     ).toBe(2);
   });
 
+  it('does not use a cancelled draw as the active rollover source', async () => {
+    const now =
+      new Date(
+        '2026-08-11T12:00:00.000Z',
+      );
+
+    await createWeeklyDraw({
+      status:
+        DrawStatus.SALES_OPEN,
+      sequenceNumber: 500,
+      scheduledDrawAt:
+        new Date(
+          '2026-08-11T11:00:00.000Z',
+        ),
+    });
+
+    await createWeeklyDraw({
+      status:
+        DrawStatus.CANCELLED,
+      sequenceNumber: 999,
+      scheduledDrawAt:
+        new Date(
+          '2026-08-20T11:00:00.000Z',
+        ),
+    });
+
+    const availability =
+      await service.getAvailability(
+        now,
+      );
+
+    expect(
+      availability.available,
+    ).toBe(true);
+
+    const activeDraw =
+      await prisma.lotteryDraw
+        .findUniqueOrThrow({
+          where: {
+            id:
+              availability.drawId!,
+          },
+        });
+
+    expect(
+      activeDraw.sequenceNumber,
+    ).toBe(501);
+    expect(
+      activeDraw.status,
+    ).toBe(
+      DrawStatus.SALES_OPEN,
+    );
+  });
   it('reports no availability before the first weekly draw exists', async () => {
     await expect(
       service.getAvailability(

@@ -263,6 +263,13 @@ export class WeeklyDrawSalesService
               where: {
                 type:
                   DrawType.WEEKLY,
+                status: {
+                  in: [
+                    DrawStatus.SCHEDULED,
+                    DrawStatus.SALES_OPEN,
+                    DrawStatus.SALES_CLOSED,
+                  ],
+                },
               },
               orderBy: {
                 sequenceNumber:
