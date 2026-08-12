@@ -10,11 +10,13 @@ import { randomUUID } from 'node:crypto';
 
 import type { RequestContextRequest } from '../types/request-context.type';
 
-const REQUEST_ID_HEADER = 'x-request-id';
 const CORRELATION_ID_HEADER =
   'x-correlation-id';
 
-function normalizeHeaderValue(
+const SAFE_CORRELATION_ID =
+  /^[A-Za-z0-9._:-]{1,128}$/;
+
+function normalizeCorrelationId(
   value: string | string[] | undefined,
 ): string | undefined {
   const candidate = Array.isArray(value)
@@ -25,11 +27,9 @@ function normalizeHeaderValue(
     return undefined;
   }
 
-  const normalized = candidate
-    .trim()
-    .slice(0, 128);
+  const normalized = candidate.trim();
 
-  return normalized.length > 0
+  return SAFE_CORRELATION_ID.test(normalized)
     ? normalized
     : undefined;
 }
@@ -43,27 +43,14 @@ export class RequestContextMiddleware
     response: Response,
     next: NextFunction,
   ): void {
-    const suppliedRequestId =
-      normalizeHeaderValue(
-        request.headers[
-          REQUEST_ID_HEADER
-        ],
-      );
+    const requestId = randomUUID();
 
-    const suppliedCorrelationId =
-      normalizeHeaderValue(
+    const correlationId =
+      normalizeCorrelationId(
         request.headers[
           CORRELATION_ID_HEADER
         ],
-      );
-
-    const requestId =
-      suppliedRequestId ?? randomUUID();
-
-    const correlationId =
-      suppliedCorrelationId ??
-      suppliedRequestId ??
-      requestId;
+      ) ?? requestId;
 
     request.requestId = requestId;
     request.correlationId =
