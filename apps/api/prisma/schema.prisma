@@ -530,18 +530,20 @@ model DrawWinner {
 }
 
 model Prize {
-  id          String      @id @default(uuid()) @db.Uuid
-  drawId      String      @db.Uuid
-  winnerId    String      @unique @db.Uuid
-  userId      String      @db.Uuid
-  rank        Int
-  amountMinor BigInt
-  currency    String      @db.Char(3)
-  status      PrizeStatus @default(CREATED)
-  approvedAt  DateTime?   @db.Timestamptz(3)
-  paidAt      DateTime?   @db.Timestamptz(3)
-  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime    @updatedAt @db.Timestamptz(3)
+  id                      String      @id @default(uuid()) @db.Uuid
+  drawId                  String      @db.Uuid
+  winnerId                String      @unique @db.Uuid
+  userId                  String      @db.Uuid
+  rank                    Int
+  amountMinor             BigInt
+  currency                String      @db.Char(3)
+  distributionRuleVersion Int?
+  shareBps                Int?
+  status                  PrizeStatus @default(CREATED)
+  approvedAt              DateTime?   @db.Timestamptz(3)
+  paidAt                  DateTime?   @db.Timestamptz(3)
+  createdAt               DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime    @updatedAt @db.Timestamptz(3)
 
   draw    LotteryDraw @relation(fields: [drawId], references: [id], onDelete: Restrict)
   winner  DrawWinner  @relation(fields: [winnerId], references: [id], onDelete: Restrict)
@@ -575,6 +577,34 @@ model Payout {
   @@index([prizeId, status])
   @@index([userId, createdAt])
   @@map("payouts")
+}
+
+model PrizeDistributionRule {
+  id            String    @id @default(uuid()) @db.Uuid
+  version       Int       @unique
+  drawType      DrawType
+  effectiveFrom DateTime  @db.Timestamptz(3)
+  effectiveTo   DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  entries PrizeDistributionRuleEntry[]
+
+  @@index([drawType, effectiveFrom, effectiveTo])
+  @@map("prize_distribution_rules")
+}
+
+model PrizeDistributionRuleEntry {
+  id        String   @id @default(uuid()) @db.Uuid
+  ruleId    String   @db.Uuid
+  rank      Int
+  shareBps  Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  rule PrizeDistributionRule @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+
+  @@unique([ruleId, rank])
+  @@index([ruleId, rank])
+  @@map("prize_distribution_rule_entries")
 }
 
 model AllocationRule {
