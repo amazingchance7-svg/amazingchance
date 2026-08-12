@@ -38,7 +38,12 @@ const base = {
       .toString(
         'base64',
       ),
-  STRIPE_SECRET_KEY:
+  EMAIL_PROVIDER:
+    'resend',
+  RESEND_API_KEY:
+    ['re', 'SEC013ProductionKey'].join('_'),
+  EMAIL_FROM:
+    'noreply@amazing-chance.com',  STRIPE_SECRET_KEY:
     ['sk', 'live', 'SEC012ProductionExampleKey'].join('_'),
   STRIPE_WEBHOOK_SECRET:
     'whsec_SEC012ProductionExampleSecret',
@@ -199,6 +204,40 @@ describe(
       },
     );
 
+    it(
+      'requires production email delivery configuration',
+      () => {
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            EMAIL_PROVIDER:
+              undefined,
+          }),
+        ).toThrow(
+          'EMAIL_PROVIDER must be resend in production',
+        );
+
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            RESEND_API_KEY:
+              undefined,
+          }),
+        ).toThrow(
+          'RESEND_API_KEY is required',
+        );
+
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            EMAIL_FROM:
+              'invalid-sender',
+          }),
+        ).toThrow(
+          'EMAIL_FROM must be a valid sender email address in production',
+        );
+      },
+    );
     it(
       'requires a live Stripe secret in production',
       () => {
