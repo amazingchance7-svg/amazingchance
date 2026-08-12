@@ -22,6 +22,7 @@ import { LotteryDrawsModule } from './lottery-draws/lottery-draws.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PrizeClaimsModule } from './prize-claims/prize-claims.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { SnapshotsModule } from './snapshots/snapshots.module';
 import { UsersModule } from './users/users.module';
@@ -46,6 +47,7 @@ import { UsersModule } from './users/users.module';
       },
     ]),
     PrismaModule,
+    PrizeClaimsModule,
     AdminOperationsModule,
     AuditModule,
     HealthModule,
