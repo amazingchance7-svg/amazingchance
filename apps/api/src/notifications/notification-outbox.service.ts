@@ -28,6 +28,15 @@ type PurchaseCompletedPayload = {
   drawPublicId: string;
   ticketNumbers: string[];
 };
+type DrawWinnerPayload = {
+  drawPublicId: string;
+  rank: number;
+  ticketPublicId: string;
+};
+
+type DrawPublishedPayload = {
+  drawPublicId: string;
+};
 
 const POLL_INTERVAL_MS =
   5_000;
@@ -116,21 +125,51 @@ export class NotificationOutboxService
     }
 
     try {
-      if (
-        item.type ===
-        NotificationOutboxType
-          .PURCHASE_COMPLETED
-      ) {
-        const payload =
-          this.parsePurchaseCompletedPayload(
-            item.payload,
-          );
+      switch (item.type) {
+        case NotificationOutboxType
+          .PURCHASE_COMPLETED: {
+          const payload =
+            this.parsePurchaseCompletedPayload(
+              item.payload,
+            );
 
-        await this.emailService
-          .sendPurchaseConfirmation(
-            item.recipientEmail,
-            payload,
-          );
+          await this.emailService
+            .sendPurchaseConfirmation(
+              item.recipientEmail,
+              payload,
+            );
+          break;
+        }
+
+        case NotificationOutboxType
+          .DRAW_WINNER: {
+          const payload =
+            this.parseDrawWinnerPayload(
+              item.payload,
+            );
+
+          await this.emailService
+            .sendWinnerNotification(
+              item.recipientEmail,
+              payload,
+            );
+          break;
+        }
+
+        case NotificationOutboxType
+          .DRAW_PUBLISHED: {
+          const payload =
+            this.parseDrawPublishedPayload(
+              item.payload,
+            );
+
+          await this.emailService
+            .sendDrawPublishedNotification(
+              item.recipientEmail,
+              payload,
+            );
+          break;
+        }
       }
 
       await this.prisma
@@ -257,6 +296,99 @@ export class NotificationOutboxService
       );
   }
 
+  private parseDrawWinnerPayload(
+    value: unknown,
+  ): DrawWinnerPayload {
+    if (
+      !value ||
+      Array.isArray(value) ||
+      typeof value !==
+        'object'
+    ) {
+      throw new Error(
+        'Invalid draw-winner notification payload',
+      );
+    }
+
+    const payload =
+      value as Record<
+        string,
+        unknown
+      >;
+
+    if (
+      typeof payload[
+        'drawPublicId'
+      ] !== 'string' ||
+      typeof payload[
+        'rank'
+      ] !== 'number' ||
+      !Number.isInteger(
+        payload['rank'],
+      ) ||
+      payload['rank'] < 1 ||
+      typeof payload[
+        'ticketPublicId'
+      ] !== 'string'
+    ) {
+      throw new Error(
+        'Invalid draw-winner notification payload',
+      );
+    }
+
+    return {
+      drawPublicId:
+        payload[
+          'drawPublicId'
+        ] as string,
+      rank:
+        payload[
+          'rank'
+        ] as number,
+      ticketPublicId:
+        payload[
+          'ticketPublicId'
+        ] as string,
+    };
+  }
+
+  private parseDrawPublishedPayload(
+    value: unknown,
+  ): DrawPublishedPayload {
+    if (
+      !value ||
+      Array.isArray(value) ||
+      typeof value !==
+        'object'
+    ) {
+      throw new Error(
+        'Invalid draw-published notification payload',
+      );
+    }
+
+    const payload =
+      value as Record<
+        string,
+        unknown
+      >;
+
+    if (
+      typeof payload[
+        'drawPublicId'
+      ] !== 'string'
+    ) {
+      throw new Error(
+        'Invalid draw-published notification payload',
+      );
+    }
+
+    return {
+      drawPublicId:
+        payload[
+          'drawPublicId'
+        ] as string,
+    };
+  }
   private parsePurchaseCompletedPayload(
     value: unknown,
   ): PurchaseCompletedPayload {
