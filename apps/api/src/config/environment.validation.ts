@@ -167,6 +167,18 @@ export function validateEnvironment(
   if (
     validatedConfig.NODE_ENV ===
       NodeEnvironment.Production &&
+    !validatedConfig.WEB_URL.startsWith(
+      'https://',
+    )
+  ) {
+    throw new Error(
+      'Environment validation failed: WEB_URL must use https in production',
+    );
+  }
+
+  if (
+    validatedConfig.NODE_ENV ===
+      NodeEnvironment.Production &&
     (
       !validatedConfig.STRIPE_SECRET_KEY ||
       !validatedConfig.STRIPE_WEBHOOK_SECRET

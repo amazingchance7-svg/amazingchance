@@ -69,7 +69,7 @@ export class LoggingInterceptor
             request.correlationId ??
             null,
           method: request.method,
-          path: request.originalUrl,
+          path: request.path,
           statusCode:
             response.statusCode,
           durationMs:

@@ -21,92 +21,52 @@ function createResponse(): {
 }
 
 describe('RequestContextMiddleware', () => {
-  it('preserves supplied request and correlation IDs', () => {
+  it('generates a server request ID and preserves a safe correlation ID', () => {
     const middleware =
       new RequestContextMiddleware();
 
     const request = {
       headers: {
         'x-request-id':
-          'request-123',
+          'attacker-controlled',
         'x-correlation-id':
-          'correlation-456',
+          'checkout-flow:123',
       },
     } as unknown as RequestContextRequest;
 
     const { response, setHeader } =
       createResponse();
 
-    const next =
-      jest.fn() as NextFunction;
-
     middleware.use(
       request,
       response,
-      next,
-    );
-
-    expect(
-      request.requestId,
-    ).toBe('request-123');
-
-    expect(
-      request.correlationId,
-    ).toBe('correlation-456');
-
-    expect(setHeader).toHaveBeenCalledWith(
-      'X-Request-ID',
-      'request-123',
-    );
-
-    expect(setHeader).toHaveBeenCalledWith(
-      'X-Correlation-ID',
-      'correlation-456',
-    );
-
-    expect(next).toHaveBeenCalledTimes(1);
-  });
-
-  it('generates identifiers when headers are missing', () => {
-    const middleware =
-      new RequestContextMiddleware();
-
-    const request = {
-      headers: {},
-    } as unknown as RequestContextRequest;
-
-    const { response } =
-      createResponse();
-
-    const next =
-      jest.fn() as NextFunction;
-
-    middleware.use(
-      request,
-      response,
-      next,
+      jest.fn() as NextFunction,
     );
 
     expect(request.requestId).toMatch(
       /^[0-9a-f-]{36}$/,
     );
 
-    expect(
-      request.correlationId,
-    ).toBe(request.requestId);
+    expect(request.requestId).not.toBe(
+      'attacker-controlled',
+    );
 
-    expect(next).toHaveBeenCalledTimes(1);
+    expect(request.correlationId).toBe(
+      'checkout-flow:123',
+    );
+
+    expect(setHeader).toHaveBeenCalledWith(
+      'X-Request-ID',
+      request.requestId,
+    );
   });
 
-  it('limits untrusted header length', () => {
+  it('falls back to the server request ID when correlation is missing', () => {
     const middleware =
       new RequestContextMiddleware();
 
     const request = {
-      headers: {
-        'x-request-id':
-          'x'.repeat(500),
-      },
+      headers: {},
     } as unknown as RequestContextRequest;
 
     const { response } =
@@ -118,8 +78,38 @@ describe('RequestContextMiddleware', () => {
       jest.fn(),
     );
 
-    expect(
+    expect(request.correlationId).toBe(
       request.requestId,
-    ).toHaveLength(128);
+    );
+  });
+
+  it('rejects malformed or oversized correlation IDs', () => {
+    const middleware =
+      new RequestContextMiddleware();
+
+    for (const value of [
+      'unsafe value',
+      'x'.repeat(129),
+      'line\nbreak',
+    ]) {
+      const request = {
+        headers: {
+          'x-correlation-id': value,
+        },
+      } as unknown as RequestContextRequest;
+
+      const { response } =
+        createResponse();
+
+      middleware.use(
+        request,
+        response,
+        jest.fn(),
+      );
+
+      expect(request.correlationId).toBe(
+        request.requestId,
+      );
+    }
   });
 });
