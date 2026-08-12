@@ -89,6 +89,8 @@ enum TicketStatus {
 
 enum NotificationOutboxType {
   PURCHASE_COMPLETED
+  DRAW_WINNER
+  DRAW_PUBLISHED
 }
 
 enum NotificationOutboxStatus {

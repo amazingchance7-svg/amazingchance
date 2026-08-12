@@ -8,6 +8,7 @@ import {
   DrawStatus,
   DrawType,
   LotteryDraw,
+  NotificationOutboxType,
   Prisma,
 } from '@prisma/client';
 
@@ -217,13 +218,206 @@ export class LotteryDrawsService {
     );
   }
 
-  publish(id: string): Promise<SerializedLotteryDraw> {
-    return this.transitionStatus(
-      id,
-      [DrawStatus.COMPLETED],
-      DrawStatus.PUBLISHED,
-      { publishedAt: new Date() },
-    );
+  publish(
+    id: string,
+  ): Promise<SerializedLotteryDraw> {
+    return this.prisma
+      .$transaction(
+        async (tx) => {
+          const draw =
+            await tx.lotteryDraw
+              .findUnique({
+                where: {
+                  id,
+                },
+                include: {
+                  winners: {
+                    orderBy: {
+                      rank:
+                        'asc',
+                    },
+                    include: {
+                      ticket: {
+                        select: {
+                          publicId:
+                            true,
+                          user: {
+                            select: {
+                              id:
+                                true,
+                              email:
+                                true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                  tickets: {
+                    where: {
+                      status:
+                        'ACTIVE',
+                    },
+                    select: {
+                      user: {
+                        select: {
+                          id:
+                            true,
+                          email:
+                            true,
+                        },
+                      },
+                    },
+                  },
+                },
+              });
+
+          if (!draw) {
+            throw new NotFoundException(
+              'Lottery draw not found',
+            );
+          }
+
+          if (
+            draw.status !==
+            DrawStatus.COMPLETED
+          ) {
+            throw new ConflictException(
+              `Cannot transition lottery draw from ${draw.status} to ${DrawStatus.PUBLISHED}`,
+            );
+          }
+
+          if (
+            draw.winners.length !==
+            draw.winnerCount
+          ) {
+            throw new ConflictException(
+              'Completed draw is missing winner records',
+            );
+          }
+
+          const publishedAt =
+            new Date();
+
+          const updated =
+            await tx.lotteryDraw
+              .updateMany({
+                where: {
+                  id:
+                    draw.id,
+                  status:
+                    DrawStatus.COMPLETED,
+                },
+                data: {
+                  status:
+                    DrawStatus.PUBLISHED,
+                  publishedAt,
+                },
+              });
+
+          if (
+            updated.count !== 1
+          ) {
+            throw new ConflictException(
+              'Draw state changed while publishing results',
+            );
+          }
+
+          const participantById =
+            new Map<
+              string,
+              string
+            >();
+
+          for (
+            const ticket of
+            draw.tickets
+          ) {
+            participantById.set(
+              ticket.user.id,
+              ticket.user.email,
+            );
+          }
+
+          const notifications = [
+            ...draw.winners.map(
+              (winner) => ({
+                type:
+                  NotificationOutboxType
+                    .DRAW_WINNER,
+                idempotencyKey:
+                  `draw-winner:${draw.id}:${winner.id}`,
+                recipientEmail:
+                  winner.ticket
+                    .user.email,
+                payload: {
+                  drawPublicId:
+                    draw.publicId,
+                  rank:
+                    winner.rank,
+                  ticketPublicId:
+                    winner.ticket
+                      .publicId,
+                },
+              }),
+            ),
+            ...Array.from(
+              participantById
+                .entries(),
+            ).map(
+              ([
+                userId,
+                email,
+              ]) => ({
+                type:
+                  NotificationOutboxType
+                    .DRAW_PUBLISHED,
+                idempotencyKey:
+                  `draw-published:${draw.id}:${userId}`,
+                recipientEmail:
+                  email,
+                payload: {
+                  drawPublicId:
+                    draw.publicId,
+                },
+              }),
+            ),
+          ];
+
+          if (
+            notifications.length >
+            0
+          ) {
+            await tx
+              .notificationOutbox
+              .createMany({
+                data:
+                  notifications,
+                skipDuplicates:
+                  true,
+              });
+          }
+
+          const published =
+            await tx.lotteryDraw
+              .findUniqueOrThrow({
+                where: {
+                  id:
+                    draw.id,
+                },
+              });
+
+          return this.serialize(
+            published,
+          );
+        },
+        {
+          isolationLevel:
+            Prisma
+              .TransactionIsolationLevel
+              .Serializable,
+        },
+      );
   }
 
   private async transitionStatus(

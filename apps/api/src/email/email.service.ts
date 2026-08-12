@@ -17,7 +17,9 @@ interface ResendResponse {
 type EmailKind =
   | 'verification'
   | 'password-reset'
-  | 'purchase-completed';
+  | 'purchase-completed'
+  | 'draw-winner'
+  | 'draw-published';
 
 @Injectable()
 export class EmailService {
@@ -111,6 +113,57 @@ export class EmailService {
           `<p>Draw: <strong>${details.drawPublicId}</strong></p>`,
           `<p>Tickets: <strong>${ticketList}</strong></p>`,
         ].join(''),
+    });
+  }
+  async sendWinnerNotification(
+    email: string,
+    details: {
+      drawPublicId: string;
+      rank: number;
+      ticketPublicId: string;
+    },
+  ): Promise<void> {
+    await this.deliver({
+      kind:
+        'draw-winner',
+      email,
+      token:
+        `${details.drawPublicId}:${details.rank}:${details.ticketPublicId}`,
+      subject:
+        'You won in Amazing Chance',
+      text:
+        [
+          `Draw: ${details.drawPublicId}`,
+          `Winning place: ${details.rank}`,
+          `Winning ticket: ${details.ticketPublicId}`,
+        ].join('\n'),
+      html:
+        [
+          `<p>Draw: <strong>${details.drawPublicId}</strong></p>`,
+          `<p>Winning place: <strong>${details.rank}</strong></p>`,
+          `<p>Winning ticket: <strong>${details.ticketPublicId}</strong></p>`,
+        ].join(''),
+    });
+  }
+
+  async sendDrawPublishedNotification(
+    email: string,
+    details: {
+      drawPublicId: string;
+    },
+  ): Promise<void> {
+    await this.deliver({
+      kind:
+        'draw-published',
+      email,
+      token:
+        details.drawPublicId,
+      subject:
+        'Amazing Chance draw results are published',
+      text:
+        `Results for draw ${details.drawPublicId} are now published.`,
+      html:
+        `<p>Results for draw <strong>${details.drawPublicId}</strong> are now published.</p>`,
     });
   }
   private async deliver(
