@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import type Stripe from 'stripe';
 
+import { AuditActions } from '../audit/audit-events.constants';
 import { createCorrelationId } from '../common/utils/identifier.util';
 import { LedgerService } from '../ledger/ledger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -665,6 +666,35 @@ export class StripeRefundService {
               reason: reason.trim(),
               paymentId: payment.id,
             },
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorType: AuditActorType.ADMIN,
+            actorId,
+            action:
+              AuditActions.ADMIN_PURCHASE_REFUND_REQUESTED,
+            entityType: 'PURCHASE',
+            entityId: purchase.id,
+            correlationId,
+            previousState: {
+              purchaseStatus:
+                PurchaseStatus.COMPLETED,
+              paymentStatus:
+                PaymentStatus.SUCCEEDED,
+            },
+            newState: {
+              purchaseStatus:
+                PurchaseStatus.REFUND_PENDING,
+              paymentStatus:
+                PaymentStatus.REFUND_PENDING,
+            },
+            metadata: {
+              reason: reason.trim(),
+              paymentId: payment.id,
+              provider: STRIPE_PROVIDER,
+            },
+            sealedAt: now,
           },
         });
 
