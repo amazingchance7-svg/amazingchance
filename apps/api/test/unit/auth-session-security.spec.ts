@@ -18,7 +18,7 @@ describe('Auth session security', () => {
     'unit-access-secret-at-least-32-bytes-long';
 
   function createStrategy(
-    findOne: jest.Mock,
+    findOneForAuthSession: jest.Mock,
   ) {
     return new JwtStrategy(
       new ConfigService({
@@ -26,18 +26,18 @@ describe('Auth session security', () => {
           accessSecret,
       }),
       {
-        findOne,
+        findOneForAuthSession,
       } as never,
     );
   }
 
   it('rejects refresh tokens at the access-token strategy boundary', async () => {
-    const findOne =
+    const findOneForAuthSession =
       jest.fn();
 
     const strategy =
       createStrategy(
-        findOne,
+        findOneForAuthSession,
       );
 
     await expect(
@@ -49,6 +49,7 @@ describe('Auth session security', () => {
         type:
           'refresh',
         mfa: false,
+        authVersion: 1,
         jti:
           'refresh-jti',
       }),
@@ -57,7 +58,7 @@ describe('Auth session security', () => {
     );
 
     expect(
-      findOne,
+      findOneForAuthSession,
     ).not.toHaveBeenCalled();
   });
 
@@ -79,8 +80,29 @@ describe('Auth session security', () => {
     );
   });
 
+  it('rejects access tokens without an explicit auth version claim', async () => {
+    const strategy =
+      createStrategy(
+        jest.fn(),
+      );
+
+    await expect(
+      strategy.validate({
+        sub:
+          'user-id',
+        email:
+          'user@example.com',
+        type:
+          'access',
+        mfa: false,
+      }),
+    ).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
   it('rejects access tokens for suspended users', async () => {
-    const findOne =
+    const findOneForAuthSession =
       jest.fn()
         .mockResolvedValue({
           id:
@@ -92,6 +114,7 @@ describe('Auth session security', () => {
               .SUSPENDED,
           emailVerifiedAt:
             new Date(),
+          authVersion: 1,
           createdAt:
             new Date(),
           updatedAt:
@@ -100,7 +123,7 @@ describe('Auth session security', () => {
 
     const strategy =
       createStrategy(
-        findOne,
+        findOneForAuthSession,
       );
 
     await expect(
@@ -112,6 +135,7 @@ describe('Auth session security', () => {
         type:
           'access',
         mfa: false,
+        authVersion: 1,
       }),
     ).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -119,7 +143,7 @@ describe('Auth session security', () => {
   });
 
   it('rejects access tokens for unverified users', async () => {
-    const findOne =
+    const findOneForAuthSession =
       jest.fn()
         .mockResolvedValue({
           id:
@@ -131,6 +155,7 @@ describe('Auth session security', () => {
               .ACTIVE,
           emailVerifiedAt:
             null,
+          authVersion: 1,
           createdAt:
             new Date(),
           updatedAt:
@@ -139,7 +164,7 @@ describe('Auth session security', () => {
 
     const strategy =
       createStrategy(
-        findOne,
+        findOneForAuthSession,
       );
 
     await expect(
@@ -151,6 +176,7 @@ describe('Auth session security', () => {
         type:
           'access',
         mfa: false,
+        authVersion: 1,
       }),
     ).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -158,7 +184,7 @@ describe('Auth session security', () => {
   });
 
   it('rejects access tokens whose email no longer matches the account', async () => {
-    const findOne =
+    const findOneForAuthSession =
       jest.fn()
         .mockResolvedValue({
           id:
@@ -170,6 +196,7 @@ describe('Auth session security', () => {
               .ACTIVE,
           emailVerifiedAt:
             new Date(),
+          authVersion: 1,
           createdAt:
             new Date(),
           updatedAt:
@@ -178,7 +205,7 @@ describe('Auth session security', () => {
 
     const strategy =
       createStrategy(
-        findOne,
+        findOneForAuthSession,
       );
 
     await expect(
@@ -190,43 +217,15 @@ describe('Auth session security', () => {
         type:
           'access',
         mfa: false,
+        authVersion: 1,
       }),
     ).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
 
-  it('normalizes a deleted account to an authentication failure', async () => {
-    const findOne =
-      jest.fn()
-        .mockRejectedValue(
-          new NotFoundException(
-            'User not found',
-          ),
-        );
-
-    const strategy =
-      createStrategy(
-        findOne,
-      );
-
-    await expect(
-      strategy.validate({
-        sub:
-          'deleted-user-id',
-        email:
-          'user@example.com',
-        type:
-          'access',
-        mfa: false,
-      }),
-    ).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
-  });
-
-  it('returns current user data with MFA assurance from the token', async () => {
-    const findOne =
+  it('rejects access tokens whose auth version no longer matches the account', async () => {
+    const findOneForAuthSession =
       jest.fn()
         .mockResolvedValue({
           id:
@@ -238,6 +237,7 @@ describe('Auth session security', () => {
               .ACTIVE,
           emailVerifiedAt:
             new Date(),
+          authVersion: 2,
           createdAt:
             new Date(),
           updatedAt:
@@ -246,7 +246,7 @@ describe('Auth session security', () => {
 
     const strategy =
       createStrategy(
-        findOne,
+        findOneForAuthSession,
       );
 
     await expect(
@@ -258,6 +258,78 @@ describe('Auth session security', () => {
         type:
           'access',
         mfa: true,
+        authVersion: 1,
+      }),
+    ).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('normalizes a deleted account to an authentication failure', async () => {
+    const findOneForAuthSession =
+      jest.fn()
+        .mockRejectedValue(
+          new NotFoundException(
+            'User not found',
+          ),
+        );
+
+    const strategy =
+      createStrategy(
+        findOneForAuthSession,
+      );
+
+    await expect(
+      strategy.validate({
+        sub:
+          'deleted-user-id',
+        email:
+          'user@example.com',
+        type:
+          'access',
+        mfa: false,
+        authVersion: 1,
+      }),
+    ).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('returns current user data with MFA assurance from the token', async () => {
+    const findOneForAuthSession =
+      jest.fn()
+        .mockResolvedValue({
+          id:
+            'user-id',
+          email:
+            'user@example.com',
+          status:
+            UserStatus
+              .ACTIVE,
+          emailVerifiedAt:
+            new Date(),
+          authVersion: 1,
+          createdAt:
+            new Date(),
+          updatedAt:
+            new Date(),
+        });
+
+    const strategy =
+      createStrategy(
+        findOneForAuthSession,
+      );
+
+    await expect(
+      strategy.validate({
+        sub:
+          'user-id',
+        email:
+          'user@example.com',
+        type:
+          'access',
+        mfa: true,
+        authVersion: 1,
       }),
     ).resolves.toMatchObject({
       id:

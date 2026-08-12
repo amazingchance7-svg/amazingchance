@@ -25,6 +25,10 @@ interface TokenUser {
   email: string;
   mfaVerified: boolean;
 }
+interface SessionTokenUser extends TokenUser {
+  authVersion: number;
+}
+
 
 @Injectable()
 export class TokenService {
@@ -40,9 +44,33 @@ export class TokenService {
   async createTokenPair(
     user: TokenUser,
   ) {
+    const currentUser =
+      await this.prisma.user
+        .findUnique({
+          where: {
+            id: user.id,
+          },
+          select: {
+            authVersion: true,
+          },
+        });
+
+    if (!currentUser) {
+      throw new UnauthorizedException(
+        'User session cannot be created',
+      );
+    }
+
+    const sessionUser:
+      SessionTokenUser = {
+        ...user,
+        authVersion:
+          currentUser.authVersion,
+      };
+
     const pair =
       await this.signTokenPair(
-        user,
+        sessionUser,
       );
 
     await this.prisma.refreshToken
@@ -93,6 +121,8 @@ export class TokenService {
                 status: true,
                 emailVerifiedAt:
                   true,
+                authVersion:
+                  true,
                 createdAt: true,
                 updatedAt: true,
               },
@@ -120,7 +150,9 @@ export class TokenService {
       storedToken.user.status !==
         UserStatus.ACTIVE ||
       !storedToken.user
-        .emailVerifiedAt
+        .emailVerifiedAt ||
+      payload.authVersion !==
+        storedToken.user.authVersion
     ) {
       await this.revokeAllForUser(
         storedToken.userId,
@@ -162,6 +194,8 @@ export class TokenService {
         email:
           storedToken.user.email,
         mfaVerified,
+        authVersion:
+          storedToken.user.authVersion,
       });
 
     await this.prisma
@@ -265,7 +299,7 @@ export class TokenService {
   }
 
   private async signTokenPair(
-    user: TokenUser,
+    user: SessionTokenUser,
   ) {
     const accessSecret =
       this.configService
@@ -298,6 +332,8 @@ export class TokenService {
         type: 'access',
         mfa:
           user.mfaVerified,
+        authVersion:
+          user.authVersion,
       };
 
     const refreshPayload:
@@ -307,6 +343,8 @@ export class TokenService {
         type: 'refresh',
         mfa:
           user.mfaVerified,
+        authVersion:
+          user.authVersion,
         jti:
           randomUUID(),
       };
@@ -382,7 +420,11 @@ export class TokenService {
         !payload.email ||
         !payload.jti ||
         typeof payload.mfa !==
-          'boolean'
+          'boolean' ||
+        !Number.isSafeInteger(
+          payload.authVersion,
+        ) ||
+        (payload.authVersion ?? 0) < 1
       ) {
         throw new UnauthorizedException(
           'Invalid refresh token',

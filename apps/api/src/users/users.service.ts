@@ -117,6 +117,34 @@ export class UsersService {
     return user;
   }
 
+  async findOneForAuthSession(
+    id: string,
+  ) {
+    const user =
+      await this.prisma.user
+        .findUnique({
+          where: {
+            id,
+          },
+          select: {
+            id: true,
+            email: true,
+            status: true,
+            emailVerifiedAt: true,
+            authVersion: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+    if (!user) {
+      throw new NotFoundException(
+        'User not found',
+      );
+    }
+
+    return user;
+  }
   async findByEmailForAuth(
     email: string,
   ) {
@@ -134,6 +162,7 @@ export class UsersService {
           passwordHash: true,
           status: true,
           emailVerifiedAt: true,
+          authVersion: true,
           createdAt: true,
           updatedAt: true,
         },
