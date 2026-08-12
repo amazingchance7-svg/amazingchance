@@ -333,6 +333,24 @@ export function validateEnvironment(
   }
 
   if (
+    (
+      typeof config.MIGRATION_DATABASE_URL ===
+        'string' &&
+      config.MIGRATION_DATABASE_URL.trim()
+        .length > 0
+    ) ||
+    (
+      typeof config.TEST_ADMIN_DATABASE_URL ===
+        'string' &&
+      config.TEST_ADMIN_DATABASE_URL.trim()
+        .length > 0
+    )
+  ) {
+    throw new Error(
+      'Environment validation failed: Migration/admin database credentials must not be present in the production API runtime',
+    );
+  }
+  if (
     typeof config.WEB_URL !==
       'string' ||
     config.WEB_URL.trim()

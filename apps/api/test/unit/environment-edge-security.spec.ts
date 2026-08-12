@@ -62,6 +62,35 @@ describe(
     );
 
     it(
+      'rejects migration credentials in the production API runtime',
+      () => {
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            MIGRATION_DATABASE_URL:
+              'postgresql://migration-user:migration-password@db.internal.example:5432/amazing_chance',
+          }),
+        ).toThrow(
+          'Migration/admin database credentials must not be present in the production API runtime',
+        );
+      },
+    );
+
+    it(
+      'rejects test admin credentials in the production API runtime',
+      () => {
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            TEST_ADMIN_DATABASE_URL:
+              'postgresql://test-admin:test-password@db.internal.example:5432/amazing_chance',
+          }),
+        ).toThrow(
+          'Migration/admin database credentials must not be present in the production API runtime',
+        );
+      },
+    );
+    it(
       'rejects HTTP WEB_URL',
       () => {
         expect(() =>
