@@ -50,6 +50,7 @@ jobs:
       DATABASE_URL: postgresql://amazing_chance_runtime_test:amazing_chance_runtime_test@127.0.0.1:55432/amazing_chance_test?schema=public
       TEST_DATABASE_URL: postgresql://amazing_chance_runtime_test:amazing_chance_runtime_test@127.0.0.1:55432/amazing_chance_test?schema=public
       TEST_ADMIN_DATABASE_URL: postgresql://amazing_chance_admin:amazing_chance_admin@127.0.0.1:55432/amazing_chance_test?schema=public
+      MIGRATION_DATABASE_URL: postgresql://amazing_chance_admin:amazing_chance_admin@127.0.0.1:55432/amazing_chance_test?schema=public
       REDIS_URL: redis://127.0.0.1:6379
       JWT_ACCESS_SECRET: ci-access-secret-at-least-32-bytes-long
       JWT_REFRESH_SECRET: ci-refresh-secret-at-least-32-bytes-long

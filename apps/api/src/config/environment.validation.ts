@@ -21,6 +21,23 @@ enum NodeEnvironment {
   Production = 'production',
 }
 
+const FORBIDDEN_PRODUCTION_DATABASE_USERS =
+  new Set([
+    'postgres',
+    'amazing_chance_admin',
+    'admin',
+    'root',
+  ]);
+
+const PLACEHOLDER_MARKERS = [
+  'change_me',
+  'changeme',
+  'replace_with',
+  'example',
+  'password',
+  'secret',
+];
+
 class EnvironmentVariables {
   @IsEnum(NodeEnvironment)
   NODE_ENV: NodeEnvironment =
@@ -38,7 +55,10 @@ class EnvironmentVariables {
 
   @IsUrl({
     require_tld: false,
-    protocols: ['redis'],
+    protocols: [
+      'redis',
+      'rediss',
+    ],
   })
   REDIS_URL!: string;
 
@@ -78,11 +98,11 @@ class EnvironmentVariables {
   @IsNotEmpty()
   @MinLength(32)
   SNAPSHOT_OWNER_SECRET!: string;
+
   @IsOptional()
   @IsString()
   @IsNotEmpty()
   MFA_ENCRYPTION_KEY?: string;
-
 
   @IsOptional()
   @IsString()
@@ -93,6 +113,145 @@ class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   STRIPE_WEBHOOK_SECRET?: string;
+}
+
+function assertProductionDatabaseUrl(
+  value: string,
+): void {
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      'Environment validation failed: DATABASE_URL must be a valid PostgreSQL URL in production',
+    );
+  }
+
+  if (
+    url.protocol !==
+      'postgresql:' &&
+    url.protocol !==
+      'postgres:'
+  ) {
+    throw new Error(
+      'Environment validation failed: DATABASE_URL must use postgresql:// in production',
+    );
+  }
+
+  const username =
+    decodeURIComponent(
+      url.username,
+    ).toLowerCase();
+
+  if (
+    !username ||
+    FORBIDDEN_PRODUCTION_DATABASE_USERS
+      .has(username)
+  ) {
+    throw new Error(
+      'Environment validation failed: DATABASE_URL must use a dedicated least-privilege runtime database user in production',
+    );
+  }
+
+  const hostname =
+    url.hostname.toLowerCase();
+
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1'
+  ) {
+    throw new Error(
+      'Environment validation failed: DATABASE_URL cannot target localhost in production',
+    );
+  }
+}
+
+function assertProductionRedisUrl(
+  value: string,
+): void {
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(
+      'Environment validation failed: REDIS_URL must be a valid TLS Redis URL in production',
+    );
+  }
+
+  if (
+    url.protocol !==
+    'rediss:'
+  ) {
+    throw new Error(
+      'Environment validation failed: REDIS_URL must use rediss:// in production',
+    );
+  }
+
+  const hostname =
+    url.hostname.toLowerCase();
+
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1'
+  ) {
+    throw new Error(
+      'Environment validation failed: REDIS_URL cannot target localhost in production',
+    );
+  }
+}
+
+function assertProductionSecret(
+  name: string,
+  value: string,
+): void {
+  const normalized =
+    value.trim().toLowerCase();
+
+  if (
+    PLACEHOLDER_MARKERS.some(
+      (marker) =>
+        normalized.includes(
+          marker,
+        ),
+    )
+  ) {
+    throw new Error(
+      `Environment validation failed: ${name} contains a placeholder or weak marker`,
+    );
+  }
+
+  if (
+    new Set(value).size < 12
+  ) {
+    throw new Error(
+      `Environment validation failed: ${name} must contain sufficient character diversity in production`,
+    );
+  }
+}
+
+function assertMfaEncryptionKey(
+  value: string,
+): void {
+  const decoded =
+    Buffer.from(
+      value,
+      'base64',
+    );
+
+  if (
+    decoded.length !== 32 ||
+    decoded.toString(
+      'base64',
+    ) !== value
+  ) {
+    throw new Error(
+      'Environment validation failed: MFA_ENCRYPTION_KEY must be canonical base64 encoding of exactly 32 bytes',
+    );
+  }
 }
 
 export function validateEnvironment(
@@ -146,8 +305,10 @@ export function validateEnvironment(
   }
 
   if (
-    validatedConfig.JWT_ACCESS_SECRET ===
-    validatedConfig.JWT_REFRESH_SECRET
+    validatedConfig
+      .JWT_ACCESS_SECRET ===
+    validatedConfig
+      .JWT_REFRESH_SECRET
   ) {
     throw new Error(
       'Environment validation failed: JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different',
@@ -155,14 +316,45 @@ export function validateEnvironment(
   }
 
   if (
-    validatedConfig.NODE_ENV ===
-      NodeEnvironment.Production &&
+    validatedConfig
+      .MFA_ENCRYPTION_KEY
+  ) {
+    assertMfaEncryptionKey(
+      validatedConfig
+        .MFA_ENCRYPTION_KEY,
+    );
+  }
+
+  if (
+    validatedConfig.NODE_ENV !==
+    NodeEnvironment.Production
+  ) {
+    return validatedConfig;
+  }
+
+  if (
     (
-      typeof config.WEB_URL !==
-        'string' ||
-      config.WEB_URL.trim()
-        .length === 0
+      typeof config.MIGRATION_DATABASE_URL ===
+        'string' &&
+      config.MIGRATION_DATABASE_URL.trim()
+        .length > 0
+    ) ||
+    (
+      typeof config.TEST_ADMIN_DATABASE_URL ===
+        'string' &&
+      config.TEST_ADMIN_DATABASE_URL.trim()
+        .length > 0
     )
+  ) {
+    throw new Error(
+      'Environment validation failed: Migration/admin database credentials must not be present in the production API runtime',
+    );
+  }
+  if (
+    typeof config.WEB_URL !==
+      'string' ||
+    config.WEB_URL.trim()
+      .length === 0
   ) {
     throw new Error(
       'Environment validation failed: WEB_URL is required in production',
@@ -170,21 +362,47 @@ export function validateEnvironment(
   }
 
   if (
-    validatedConfig.NODE_ENV ===
-      NodeEnvironment.Production &&
-    !validatedConfig.WEB_URL.startsWith(
-      'https://',
-    )
+    !validatedConfig.WEB_URL
+      .startsWith(
+        'https://',
+      )
   ) {
     throw new Error(
       'Environment validation failed: WEB_URL must use https in production',
     );
   }
 
+  assertProductionDatabaseUrl(
+    validatedConfig
+      .DATABASE_URL,
+  );
+
+  assertProductionRedisUrl(
+    validatedConfig
+      .REDIS_URL,
+  );
+
+  assertProductionSecret(
+    'JWT_ACCESS_SECRET',
+    validatedConfig
+      .JWT_ACCESS_SECRET,
+  );
+
+  assertProductionSecret(
+    'JWT_REFRESH_SECRET',
+    validatedConfig
+      .JWT_REFRESH_SECRET,
+  );
+
+  assertProductionSecret(
+    'SNAPSHOT_OWNER_SECRET',
+    validatedConfig
+      .SNAPSHOT_OWNER_SECRET,
+  );
+
   if (
-    validatedConfig.NODE_ENV ===
-      NodeEnvironment.Production &&
-    !validatedConfig.MFA_ENCRYPTION_KEY
+    !validatedConfig
+      .MFA_ENCRYPTION_KEY
   ) {
     throw new Error(
       'Environment validation failed: MFA_ENCRYPTION_KEY is required in production',
@@ -192,30 +410,33 @@ export function validateEnvironment(
   }
 
   if (
-    validatedConfig.MFA_ENCRYPTION_KEY
-  ) {
-    const decodedMfaKey =
-      Buffer.from(
-        validatedConfig.MFA_ENCRYPTION_KEY,
-        'base64',
-      );
-
-    if (decodedMfaKey.length !== 32) {
-      throw new Error(
-        'Environment validation failed: MFA_ENCRYPTION_KEY must decode to exactly 32 bytes',
-      );
-    }
-  }
-  if (
-    validatedConfig.NODE_ENV ===
-      NodeEnvironment.Production &&
-    (
-      !validatedConfig.STRIPE_SECRET_KEY ||
-      !validatedConfig.STRIPE_WEBHOOK_SECRET
-    )
+    !validatedConfig
+      .STRIPE_SECRET_KEY ||
+    !validatedConfig
+      .STRIPE_WEBHOOK_SECRET
   ) {
     throw new Error(
       'Environment validation failed: STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production',
+    );
+  }
+
+  if (
+    !validatedConfig
+      .STRIPE_SECRET_KEY
+      .startsWith('sk_live_')
+  ) {
+    throw new Error(
+      'Environment validation failed: STRIPE_SECRET_KEY must be a live-mode key in production',
+    );
+  }
+
+  if (
+    !validatedConfig
+      .STRIPE_WEBHOOK_SECRET
+      .startsWith('whsec_')
+  ) {
+    throw new Error(
+      'Environment validation failed: STRIPE_WEBHOOK_SECRET has an invalid production format',
     );
   }
 
