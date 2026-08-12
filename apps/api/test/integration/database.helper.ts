@@ -56,6 +56,7 @@ export async function cleanTestDatabase(
       "tickets",
       "ticket_allocations",
       "ticket_sequences",
+      "notification_outbox",
       "webhook_events",
       "payment_attempts",
       "payments",

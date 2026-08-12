@@ -257,6 +257,38 @@ describe('Verified payment orchestration integration', () => {
     expect(
       await prisma.purchaseStateEvent.count(),
     ).toBe(1);
+    const notification =
+      await prisma
+        .notificationOutbox
+        .findUnique({
+          where: {
+            idempotencyKey:
+              `purchase-completed:${s.purchase.id}`,
+          },
+        });
+
+    expect(
+      notification,
+    ).toMatchObject({
+      recipientEmail:
+        s.user.email,
+      status:
+        'PENDING',
+    });
+
+    expect(
+      notification?.payload,
+    ).toMatchObject({
+      purchasePublicId:
+        s.purchase.publicId,
+      drawPublicId:
+        s.draw.publicId,
+      ticketNumbers: [
+        '1',
+        '2',
+        '3',
+      ],
+    });
 
     const ledgerTransactions =
       await prisma.ledgerTransaction.findMany({
@@ -451,6 +483,34 @@ describe('Verified payment orchestration integration', () => {
     expect(
       await prisma.purchaseStateEvent.count(),
     ).toBe(1);
+    const notification =
+      await prisma
+        .notificationOutbox
+        .findUnique({
+          where: {
+            idempotencyKey:
+              `purchase-completed:${s.purchase.id}`,
+          },
+        });
+
+    expect(
+      notification,
+    ).toMatchObject({
+      recipientEmail:
+        s.user.email,
+      status:
+        'PENDING',
+    });
+
+    expect(
+      notification?.payload,
+    ).toMatchObject({
+      purchasePublicId:
+        s.purchase.publicId,
+      drawPublicId:
+        s.draw.publicId,
+      ticketNumbers: ['1', '2'],
+    });
   });
 
   it('is safe for concurrent repeated confirmations', async () => {
@@ -496,6 +556,34 @@ describe('Verified payment orchestration integration', () => {
     expect(
       await prisma.purchaseStateEvent.count(),
     ).toBe(1);
+    const notification =
+      await prisma
+        .notificationOutbox
+        .findUnique({
+          where: {
+            idempotencyKey:
+              `purchase-completed:${s.purchase.id}`,
+          },
+        });
+
+    expect(
+      notification,
+    ).toMatchObject({
+      recipientEmail:
+        s.user.email,
+      status:
+        'PENDING',
+    });
+
+    expect(
+      notification?.payload,
+    ).toMatchObject({
+      purchasePublicId:
+        s.purchase.publicId,
+      drawPublicId:
+        s.draw.publicId,
+      ticketNumbers: ['1', '2', '3', '4'],
+    });
   });
 
   it('rolls back both ledger transactions and allocation when ticket issuance fails', async () => {

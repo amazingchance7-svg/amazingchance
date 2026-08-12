@@ -107,6 +107,20 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
+  EMAIL_PROVIDER?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  RESEND_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  EMAIL_FROM?: string;
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   STRIPE_SECRET_KEY?: string;
 
   @IsOptional()
@@ -409,6 +423,40 @@ export function validateEnvironment(
     );
   }
 
+  if (
+    validatedConfig
+      .EMAIL_PROVIDER !==
+      'resend'
+  ) {
+    throw new Error(
+      'Environment validation failed: EMAIL_PROVIDER must be resend in production',
+    );
+  }
+
+  if (
+    !validatedConfig
+      .RESEND_API_KEY ||
+    !validatedConfig
+      .RESEND_API_KEY
+      .startsWith('re_')
+  ) {
+    throw new Error(
+      'Environment validation failed: RESEND_API_KEY is required and must use the Resend key format in production',
+    );
+  }
+
+  if (
+    !validatedConfig
+      .EMAIL_FROM ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      validatedConfig
+        .EMAIL_FROM,
+    )
+  ) {
+    throw new Error(
+      'Environment validation failed: EMAIL_FROM must be a valid sender email address in production',
+    );
+  }
   if (
     !validatedConfig
       .STRIPE_SECRET_KEY ||
