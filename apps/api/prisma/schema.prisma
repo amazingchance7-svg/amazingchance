@@ -124,6 +124,17 @@ enum PrizeStatus {
   CANCELLED
 }
 
+enum PrizeEligibilityCheckType {
+  IDENTITY
+  AGE
+  JURISDICTION
+}
+
+enum PrizeEligibilityCheckStatus {
+  PASSED
+  FAILED
+}
+
 enum PayoutStatus {
   CREATED
   PENDING
@@ -177,15 +188,18 @@ model User {
   createdAt       DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime   @updatedAt @db.Timestamptz(3)
 
-  purchases     Purchase[]
-  tickets       Ticket[]
-  prizes        Prize[]
-  payouts       Payout[]
-  refreshTokens RefreshToken[]
-  userTokens    UserToken[]
-  mfaCredential MfaCredential?
-  roles         UserRole[]     @relation("UserRoleUser")
-  assignedRoles UserRole[]     @relation("UserRoleAssignedBy")
+  purchases             Purchase[]
+  tickets               Ticket[]
+  prizes                Prize[]
+  payouts               Payout[]
+  prizeClaims           PrizeClaim[]            @relation("PrizeClaimUser")
+  reviewedPrizeClaims   PrizeClaim[]            @relation("PrizeClaimReviewer")
+  eligibilityChecksMade PrizeEligibilityCheck[] @relation("PrizeEligibilityCheckedBy")
+  refreshTokens         RefreshToken[]
+  userTokens            UserToken[]
+  mfaCredential         MfaCredential?
+  roles                 UserRole[]              @relation("UserRoleUser")
+  assignedRoles         UserRole[]              @relation("UserRoleAssignedBy")
 
   @@index([status])
   @@map("users")
@@ -549,11 +563,53 @@ model Prize {
   winner  DrawWinner  @relation(fields: [winnerId], references: [id], onDelete: Restrict)
   user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
   payouts Payout[]
+  claim   PrizeClaim?
 
   @@unique([drawId, rank])
   @@index([userId, status])
   @@index([status, createdAt])
   @@map("prizes")
+}
+
+model PrizeClaim {
+  id                  String    @id @default(uuid()) @db.Uuid
+  prizeId             String    @unique @db.Uuid
+  userId              String    @db.Uuid
+  declaredDateOfBirth DateTime  @db.Date
+  declaredCountryCode String    @db.Char(2)
+  submittedAt         DateTime  @default(now()) @db.Timestamptz(3)
+  reviewedAt          DateTime? @db.Timestamptz(3)
+  reviewedByUserId    String?   @db.Uuid
+  decisionReason      String?
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  prize          Prize                   @relation(fields: [prizeId], references: [id], onDelete: Restrict)
+  user           User                    @relation("PrizeClaimUser", fields: [userId], references: [id], onDelete: Restrict)
+  reviewedByUser User?                   @relation("PrizeClaimReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  checks         PrizeEligibilityCheck[]
+
+  @@index([userId, submittedAt])
+  @@index([reviewedAt])
+  @@map("prize_claims")
+}
+
+model PrizeEligibilityCheck {
+  id              String                      @id @default(uuid()) @db.Uuid
+  claimId         String                      @db.Uuid
+  type            PrizeEligibilityCheckType
+  status          PrizeEligibilityCheckStatus
+  evidence        Json
+  checkedByUserId String                      @db.Uuid
+  checkedAt       DateTime                    @default(now()) @db.Timestamptz(3)
+  createdAt       DateTime                    @default(now()) @db.Timestamptz(3)
+
+  claim         PrizeClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  checkedByUser User       @relation("PrizeEligibilityCheckedBy", fields: [checkedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([claimId, type])
+  @@index([claimId, checkedAt])
+  @@map("prize_eligibility_checks")
 }
 
 model Payout {
