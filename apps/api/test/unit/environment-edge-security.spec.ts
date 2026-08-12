@@ -17,6 +17,8 @@ const base = {
     'b'.repeat(32),
   SNAPSHOT_OWNER_SECRET:
     'c'.repeat(32),
+  MFA_ENCRYPTION_KEY:
+    Buffer.alloc(32, 7).toString('base64'),
   STRIPE_SECRET_KEY:
     'sk_test_example',
   STRIPE_WEBHOOK_SECRET:

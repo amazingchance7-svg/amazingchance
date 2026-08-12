@@ -78,6 +78,11 @@ class EnvironmentVariables {
   @IsNotEmpty()
   @MinLength(32)
   SNAPSHOT_OWNER_SECRET!: string;
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  MFA_ENCRYPTION_KEY?: string;
+
 
   @IsOptional()
   @IsString()
@@ -176,6 +181,31 @@ export function validateEnvironment(
     );
   }
 
+  if (
+    validatedConfig.NODE_ENV ===
+      NodeEnvironment.Production &&
+    !validatedConfig.MFA_ENCRYPTION_KEY
+  ) {
+    throw new Error(
+      'Environment validation failed: MFA_ENCRYPTION_KEY is required in production',
+    );
+  }
+
+  if (
+    validatedConfig.MFA_ENCRYPTION_KEY
+  ) {
+    const decodedMfaKey =
+      Buffer.from(
+        validatedConfig.MFA_ENCRYPTION_KEY,
+        'base64',
+      );
+
+    if (decodedMfaKey.length !== 32) {
+      throw new Error(
+        'Environment validation failed: MFA_ENCRYPTION_KEY must decode to exactly 32 bytes',
+      );
+    }
+  }
   if (
     validatedConfig.NODE_ENV ===
       NodeEnvironment.Production &&

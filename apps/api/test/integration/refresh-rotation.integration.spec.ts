@@ -77,6 +77,8 @@ describe('TokenService refresh rotation integration', () => {
           user.id,
         email:
           user.email,
+        mfaVerified:
+          false,
       });
 
     const results =
@@ -159,6 +161,8 @@ describe('TokenService refresh rotation integration', () => {
           user.id,
         email:
           user.email,
+        mfaVerified:
+          false,
       });
 
     await prisma.user.update({
@@ -210,6 +214,8 @@ describe('TokenService refresh rotation integration', () => {
           user.id,
         email:
           user.email,
+        mfaVerified:
+          false,
       });
 
     await prisma.user.update({
@@ -261,6 +267,8 @@ describe('TokenService refresh rotation integration', () => {
           user.id,
         email:
           user.email,
+        mfaVerified:
+          false,
       });
 
     await prisma.user.update({
