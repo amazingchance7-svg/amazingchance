@@ -263,6 +263,47 @@ describe('Stripe refund pipeline', () => {
       PaymentStatus.REFUND_PENDING,
     );
 
+    const audit =
+      await prisma.auditLog.findFirstOrThrow({
+        where: {
+          action:
+            'ADMIN_PURCHASE_REFUND_REQUESTED',
+          entityType: 'PURCHASE',
+          entityId: purchase.id,
+        },
+      });
+
+    expect(audit).toMatchObject({
+      actorType: 'ADMIN',
+      actorId:
+        '00000000-0000-4000-8000-000000009999',
+      entityType: 'PURCHASE',
+      entityId: purchase.id,
+    });
+
+    expect(audit.previousState).toEqual({
+      purchaseStatus:
+        PurchaseStatus.COMPLETED,
+      paymentStatus:
+        PaymentStatus.SUCCEEDED,
+    });
+
+    expect(audit.newState).toEqual({
+      purchaseStatus:
+        PurchaseStatus.REFUND_PENDING,
+      paymentStatus:
+        PaymentStatus.REFUND_PENDING,
+    });
+
+    expect(audit.metadata).toEqual({
+      reason:
+        'Customer requested cancellation before snapshot',
+      paymentId: payment.id,
+      provider: 'STRIPE',
+    });
+
+    expect(audit.correlationId).toBeTruthy();
+    expect(audit.sealedAt).not.toBeNull();
     expect(stripeClient.createRefund).toHaveBeenCalledWith(
       expect.objectContaining({
         paymentIntentId: 'pi_refund_test',
