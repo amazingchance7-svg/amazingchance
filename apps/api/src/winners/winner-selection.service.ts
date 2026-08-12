@@ -5,11 +5,24 @@ import {
 } from '@nestjs/common';
 import {
   DrawStatus,
+  LedgerAccountCode,
+  LedgerSide,
+  LedgerTransactionType,
   Prisma,
+  PrizeStatus,
   RandomnessStatus,
   SnapshotStatus,
 } from '@prisma/client';
 
+import {
+  LedgerService,
+} from '../ledger/ledger.service';
+import {
+  PrizeDistributionService,
+} from '../prizes/prize-distribution.service';
+import {
+  PrizePoolService,
+} from '../prizes/prize-pool.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   type FinalizeWinnerSelectionResult,
@@ -31,10 +44,33 @@ type WinnerRecord = {
   };
 };
 
+type WinnerForRecognition =
+  WinnerRecord & {
+    ticket: {
+      userId: string;
+    };
+  };
+
+type PrizeEvidence = {
+  id: string;
+  rank: number;
+  amountMinor: bigint;
+  distributionRuleVersion:
+    number | null;
+  shareBps:
+    number | null;
+};
+
 @Injectable()
 export class WinnerSelectionService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly ledger:
+      LedgerService,
+    private readonly prizeDistribution:
+      PrizeDistributionService,
+    private readonly prizePool:
+      PrizePoolService,
   ) {}
 
   async finalize(
@@ -84,6 +120,19 @@ export class WinnerSelectionService {
         },
         include: {
           snapshot: true,
+          prizes: {
+            orderBy: {
+              rank: 'asc',
+            },
+            select: {
+              id: true,
+              rank: true,
+              amountMinor: true,
+              distributionRuleVersion:
+                true,
+              shareBps: true,
+            },
+          },
           winners: {
             orderBy: {
               rank: 'asc',
@@ -124,6 +173,14 @@ export class WinnerSelectionService {
     ) {
       return this.resolveExistingResult(
         draw,
+      );
+    }
+
+    if (
+      draw.prizes.length > 0
+    ) {
+      throw new ConflictException(
+        'Incomplete draw already contains recognized prizes',
       );
     }
 
@@ -302,7 +359,199 @@ export class WinnerSelectionService {
       ),
     });
 
-    const completedAt = new Date();
+    const winners =
+      await tx.drawWinner.findMany({
+        where: {
+          drawId: draw.id,
+        },
+        orderBy: {
+          rank: 'asc',
+        },
+        include: {
+          ticket: {
+            select: {
+              userId: true,
+            },
+          },
+          snapshotEntry: {
+            select: {
+              ticketPublicId: true,
+              ownerPublicRef: true,
+            },
+          },
+        },
+      }) as WinnerForRecognition[];
+
+    if (
+      winners.length !==
+      draw.winnerCount
+    ) {
+      throw new ConflictException(
+        'Winner creation did not produce the configured winner count',
+      );
+    }
+
+    const pool =
+      await this.prizePool
+        .resolveInTransaction(
+          tx,
+          {
+            drawId:
+              draw.id,
+            drawType:
+              draw.type,
+            participationYear:
+              draw.participationYear,
+            currency:
+              draw.currency,
+          },
+        );
+
+    const rule =
+      await this.prizeDistribution
+        .resolveInTransaction(
+          tx,
+          draw.type,
+          draw.scheduledDrawAt,
+          draw.winnerCount,
+        );
+
+    const calculatedPrizes =
+      this.prizeDistribution
+        .calculate(
+          pool.amountMinor,
+          rule,
+        );
+
+    for (
+      const calculatedPrize of
+      calculatedPrizes
+    ) {
+      const winner =
+        winners.find(
+          (candidate) =>
+            candidate.rank ===
+            calculatedPrize.rank,
+        );
+
+      if (!winner) {
+        throw new ConflictException(
+          `Winner for prize rank ${calculatedPrize.rank} was not found`,
+        );
+      }
+
+      const prize =
+        await tx.prize.create({
+          data: {
+            drawId:
+              draw.id,
+            winnerId:
+              winner.id,
+            userId:
+              winner.ticket.userId,
+            rank:
+              winner.rank,
+            amountMinor:
+              calculatedPrize
+                .amountMinor,
+            currency:
+              draw.currency,
+            status:
+              PrizeStatus.CREATED,
+            distributionRuleVersion:
+              rule.version,
+            shareBps:
+              calculatedPrize
+                .shareBps,
+          },
+        });
+
+      await this.ledger
+        .appendInTransaction(
+          tx,
+          {
+            type:
+              LedgerTransactionType
+                .PRIZE_RECOGNIZED,
+            idempotencyKey:
+              `prize-recognized:${prize.id}`,
+            referenceType:
+              'PRIZE',
+            referenceId:
+              prize.id,
+            currency:
+              draw.currency,
+            description:
+              'Prize obligation recognized from jackpot',
+            metadata: {
+              drawId:
+                draw.id,
+              winnerId:
+                winner.id,
+              rank:
+                winner.rank,
+              distributionRuleVersion:
+                rule.version,
+              shareBps:
+                calculatedPrize
+                  .shareBps,
+              poolAmountMinor:
+                pool.amountMinor
+                  .toString(),
+            },
+            postings: [
+              {
+                accountCode:
+                  pool.sourceAccountCode,
+                side:
+                  LedgerSide.DEBIT,
+                amountMinor:
+                  calculatedPrize
+                    .amountMinor,
+              },
+              {
+                accountCode:
+                  LedgerAccountCode
+                    .PRIZE_PAYABLE,
+                side:
+                  LedgerSide.CREDIT,
+                amountMinor:
+                  calculatedPrize
+                    .amountMinor,
+              },
+            ],
+          },
+        );
+    }
+
+    const recognizedPrizes =
+      await tx.prize.findMany({
+        where: {
+          drawId:
+            draw.id,
+        },
+        orderBy: {
+          rank:
+            'asc',
+        },
+        select: {
+          id: true,
+          rank: true,
+          amountMinor: true,
+          distributionRuleVersion:
+            true,
+          shareBps: true,
+        },
+      });
+
+    this.assertPrizeEvidence(
+      recognizedPrizes,
+      draw.winnerCount,
+      pool.amountMinor,
+    );
+
+    const completedAt =
+      new Date();
 
     const completion =
       await tx.lotteryDraw.updateMany({
@@ -313,7 +562,8 @@ export class WinnerSelectionService {
               .WINNER_SELECTION_PENDING,
         },
         data: {
-          status: DrawStatus.COMPLETED,
+          status:
+            DrawStatus.COMPLETED,
           completedAt,
         },
       });
@@ -323,24 +573,6 @@ export class WinnerSelectionService {
         'Draw state changed while winner selection was completing',
       );
     }
-
-    const winners =
-      await tx.drawWinner.findMany({
-        where: {
-          drawId: draw.id,
-        },
-        orderBy: {
-          rank: 'asc',
-        },
-        include: {
-          snapshotEntry: {
-            select: {
-              ticketPublicId: true,
-              ownerPublicRef: true,
-            },
-          },
-        },
-      });
 
     return {
       drawId: draw.id,
@@ -355,7 +587,9 @@ export class WinnerSelectionService {
       completedAt,
       alreadyCompleted: false,
       winners:
-        this.serializeWinners(winners),
+        this.serializeWinners(
+          winners,
+        ),
     };
   }
 
@@ -371,6 +605,7 @@ export class WinnerSelectionService {
         snapshotHash: string | null;
         merkleRoot: string | null;
       } | null;
+      prizes: PrizeEvidence[];
       winners: WinnerRecord[];
       randomnessRecords: Array<{
         id: string;
@@ -387,12 +622,19 @@ export class WinnerSelectionService {
       !snapshot.merkleRoot ||
       !randomness ||
       draw.winners.length !==
+        draw.winnerCount ||
+      draw.prizes.length !==
         draw.winnerCount
     ) {
       throw new ConflictException(
-        'Completed draw is missing winner-selection evidence',
+        'Completed draw is missing winner-selection or prize-recognition evidence',
       );
     }
+
+    this.assertPrizeEvidence(
+      draw.prizes,
+      draw.winnerCount,
+    );
 
     return {
       drawId: draw.id,
@@ -427,6 +669,19 @@ export class WinnerSelectionService {
         },
         include: {
           snapshot: true,
+          prizes: {
+            orderBy: {
+              rank: 'asc',
+            },
+            select: {
+              id: true,
+              rank: true,
+              amountMinor: true,
+              distributionRuleVersion:
+                true,
+              shareBps: true,
+            },
+          },
           winners: {
             orderBy: {
               rank: 'asc',
@@ -466,6 +721,75 @@ export class WinnerSelectionService {
     return this.resolveExistingResult(
       draw,
     );
+  }
+
+  private assertPrizeEvidence(
+    prizes:
+      PrizeEvidence[],
+    winnerCount:
+      number,
+    expectedPoolMinor?:
+      bigint,
+  ): void {
+    if (
+      prizes.length !==
+      winnerCount
+    ) {
+      throw new ConflictException(
+        'Prize recognition did not produce the configured prize count',
+      );
+    }
+
+    const validRanks =
+      prizes.every(
+        (
+          prize,
+          index,
+        ) =>
+          prize.rank ===
+            index + 1 &&
+          prize.amountMinor >
+            0n &&
+          prize.distributionRuleVersion !==
+            null &&
+          prize.distributionRuleVersion >
+            0 &&
+          prize.shareBps !==
+            null &&
+          prize.shareBps >
+            0,
+      );
+
+    if (!validRanks) {
+      throw new ConflictException(
+        'Recognized prize evidence is incomplete',
+      );
+    }
+
+    if (
+      expectedPoolMinor !==
+      undefined
+    ) {
+      const total =
+        prizes.reduce(
+          (
+            sum,
+            prize,
+          ) =>
+            sum +
+            prize.amountMinor,
+          0n,
+        );
+
+      if (
+        total !==
+        expectedPoolMinor
+      ) {
+        throw new ConflictException(
+          'Recognized prize amounts do not equal the ledger-backed prize pool',
+        );
+      }
+    }
   }
 
   private serializeWinners(

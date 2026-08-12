@@ -9,6 +9,14 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
+import {
+  LedgerAccountCode,
+  LedgerSide,
+  LedgerTransactionType,
+} from '@prisma/client';
+import { LedgerService } from '../../src/ledger/ledger.service';
+import { PrizeDistributionService } from '../../src/prizes/prize-distribution.service';
+import { PrizePoolService } from '../../src/prizes/prize-pool.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
 import { SnapshotCryptographyService } from '../../src/snapshots/snapshot-cryptography.service';
@@ -31,6 +39,7 @@ describe('Winner selection integration', () => {
   let builder: SnapshotBuilderService;
   let finalizer: SnapshotFinalizerService;
   let winnerSelection: WinnerSelectionService;
+  let ledger: LedgerService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
@@ -52,8 +61,20 @@ describe('Winner selection integration', () => {
         cryptography,
       );
 
+    ledger =
+      new LedgerService(prisma);
+
     winnerSelection =
-      new WinnerSelectionService(prisma);
+      new WinnerSelectionService(
+        prisma,
+        ledger,
+        new PrizeDistributionService(
+          prisma,
+        ),
+        new PrizePoolService(
+          prisma,
+        ),
+      );
   });
 
   beforeEach(async () => {
@@ -130,6 +151,61 @@ describe('Winner selection integration', () => {
         },
       });
 
+    await ledger.append({
+      type:
+        LedgerTransactionType
+          .PAYMENT_ALLOCATION,
+      idempotencyKey:
+        `winner-selection-pool-${randomUUID()}`,
+      referenceType:
+        'PAYMENT',
+      referenceId:
+        randomUUID(),
+      currency:
+        'USD',
+      metadata: {
+        drawId:
+          draw.id,
+      },
+      postings: [
+        {
+          accountCode:
+            LedgerAccountCode
+              .PAYMENT_CLEARING,
+          side:
+            LedgerSide.DEBIT,
+          amountMinor:
+            500n,
+        },
+        {
+          accountCode:
+            LedgerAccountCode
+              .WEEKLY_JACKPOT,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            350n,
+        },
+        {
+          accountCode:
+            LedgerAccountCode
+              .ANNUAL_JACKPOT,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            50n,
+        },
+        {
+          accountCode:
+            LedgerAccountCode
+              .COMPANY_REVENUE,
+          side:
+            LedgerSide.CREDIT,
+          amountMinor:
+            100n,
+        },
+      ],
+    });
     const tickets = [];
 
     for (
@@ -511,5 +587,467 @@ describe('Winner selection integration', () => {
     expect(
       await prisma.drawWinner.count(),
     ).toBe(0);
+  });
+
+  it('rolls back winners, prizes, prize ledger entries, and draw completion when prize ledger recognition fails', async () => {
+    const scenario =
+      await createScenario([
+        4,
+        1,
+        3,
+      ]);
+
+    const appendSpy =
+      jest
+        .spyOn(
+          ledger,
+          'appendInTransaction',
+        )
+        .mockRejectedValueOnce(
+          new Error(
+            'SEC015_TEST_PRIZE_LEDGER_FAILURE',
+          ),
+        );
+
+    try {
+      await expect(
+        winnerSelection.finalize(
+          scenario.draw.id,
+        ),
+      ).rejects.toThrow(
+        'SEC015_TEST_PRIZE_LEDGER_FAILURE',
+      );
+    } finally {
+      appendSpy.mockRestore();
+    }
+
+    expect(
+      await prisma.drawWinner.count({
+        where: {
+          drawId:
+            scenario.draw.id,
+        },
+      }),
+    ).toBe(0);
+
+    expect(
+      await prisma.prize.count({
+        where: {
+          drawId:
+            scenario.draw.id,
+        },
+      }),
+    ).toBe(0);
+
+    expect(
+      await prisma.ledgerTransaction.count({
+        where: {
+          type:
+            LedgerTransactionType
+              .PRIZE_RECOGNIZED,
+        },
+      }),
+    ).toBe(0);
+
+    const rolledBackDraw =
+      await prisma.lotteryDraw
+        .findUniqueOrThrow({
+          where: {
+            id:
+              scenario.draw.id,
+          },
+        });
+
+    expect(
+      rolledBackDraw.status,
+    ).toBe(
+      DrawStatus.RANDOMNESS_VERIFIED,
+    );
+
+    expect(
+      rolledBackDraw.completedAt,
+    ).toBeNull();
+  });
+
+  it('persists exact immutable prize evidence backed by balanced sealed ledger transactions', async () => {
+    const scenario =
+      await createScenario([
+        4,
+        1,
+        3,
+      ]);
+
+    await winnerSelection.finalize(
+      scenario.draw.id,
+    );
+
+    const prizes =
+      await prisma.prize.findMany({
+        where: {
+          drawId:
+            scenario.draw.id,
+        },
+        orderBy: {
+          rank: 'asc',
+        },
+      });
+
+    expect(
+      prizes.map(
+        (prize) => ({
+          rank:
+            prize.rank,
+          amountMinor:
+            prize.amountMinor,
+          distributionRuleVersion:
+            prize.distributionRuleVersion,
+          shareBps:
+            prize.shareBps,
+        }),
+      ),
+    ).toEqual([
+      {
+        rank: 1,
+        amountMinor: 175n,
+        distributionRuleVersion: 1,
+        shareBps: 5000,
+      },
+      {
+        rank: 2,
+        amountMinor: 105n,
+        distributionRuleVersion: 1,
+        shareBps: 3000,
+      },
+      {
+        rank: 3,
+        amountMinor: 70n,
+        distributionRuleVersion: 1,
+        shareBps: 2000,
+      },
+    ]);
+
+    expect(
+      prizes.reduce(
+        (
+          sum,
+          prize,
+        ) =>
+          sum +
+          prize.amountMinor,
+        0n,
+      ),
+    ).toBe(350n);
+
+    const transactions =
+      await prisma.ledgerTransaction
+        .findMany({
+          where: {
+            type:
+              LedgerTransactionType
+                .PRIZE_RECOGNIZED,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+          include: {
+            postings: true,
+          },
+        });
+
+    expect(
+      transactions,
+    ).toHaveLength(3);
+
+    for (
+      const transaction of
+      transactions
+    ) {
+      expect(
+        transaction.sealedAt,
+      ).not.toBeNull();
+
+      expect(
+        transaction.referenceType,
+      ).toBe('PRIZE');
+
+      const debit =
+        transaction.postings
+          .filter(
+            (posting) =>
+              posting.side ===
+              LedgerSide.DEBIT,
+          )
+          .reduce(
+            (
+              sum,
+              posting,
+            ) =>
+              sum +
+              posting.amountMinor,
+            0n,
+          );
+
+      const credit =
+        transaction.postings
+          .filter(
+            (posting) =>
+              posting.side ===
+              LedgerSide.CREDIT,
+          )
+          .reduce(
+            (
+              sum,
+              posting,
+            ) =>
+              sum +
+              posting.amountMinor,
+            0n,
+          );
+
+      expect(debit).toBe(credit);
+
+      expect(
+        transaction.postings
+          .some(
+            (posting) =>
+              posting.accountCode ===
+                LedgerAccountCode
+                  .WEEKLY_JACKPOT &&
+              posting.side ===
+                LedgerSide.DEBIT,
+          ),
+      ).toBe(true);
+
+      expect(
+        transaction.postings
+          .some(
+            (posting) =>
+              posting.accountCode ===
+                LedgerAccountCode
+                  .PRIZE_PAYABLE &&
+              posting.side ===
+                LedgerSide.CREDIT,
+          ),
+      ).toBe(true);
+    }
+
+    expect(
+      transactions.reduce(
+        (
+          sum,
+          transaction,
+        ) =>
+          sum +
+          transaction.postings
+            .filter(
+              (posting) =>
+                posting.accountCode ===
+                  LedgerAccountCode
+                    .PRIZE_PAYABLE &&
+                posting.side ===
+                  LedgerSide.CREDIT,
+            )
+            .reduce(
+              (
+                postingSum,
+                posting,
+              ) =>
+                postingSum +
+                posting.amountMinor,
+              0n,
+            ),
+        0n,
+      ),
+    ).toBe(350n);
+  });
+
+  it('rejects mutation and deletion of recognized prize financial identity at the database boundary', async () => {
+    const scenario =
+      await createScenario();
+
+    await winnerSelection.finalize(
+      scenario.draw.id,
+    );
+
+    const prize =
+      await prisma.prize
+        .findFirstOrThrow({
+          where: {
+            drawId:
+              scenario.draw.id,
+          },
+          orderBy: {
+            rank: 'asc',
+          },
+        });
+
+    await expect(
+      prisma.prize.update({
+        where: {
+          id: prize.id,
+        },
+        data: {
+          amountMinor:
+            prize.amountMinor + 1n,
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.prize.update({
+        where: {
+          id: prize.id,
+        },
+        data: {
+          shareBps:
+            (prize.shareBps ?? 0) +
+            1,
+        },
+      }),
+    ).rejects.toThrow();
+
+    const anotherUser =
+      await prisma.user.create({
+        data: {
+          email:
+            `${randomUUID()}@example.com`,
+          passwordHash: 'hash',
+          status:
+            UserStatus.ACTIVE,
+          emailVerifiedAt:
+            new Date(),
+        },
+      });
+
+    await expect(
+      prisma.prize.update({
+        where: {
+          id: prize.id,
+        },
+        data: {
+          userId:
+            anotherUser.id,
+        },
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      prisma.prize.delete({
+        where: {
+          id: prize.id,
+        },
+      }),
+    ).rejects.toThrow();
+
+    const persisted =
+      await prisma.prize
+        .findUniqueOrThrow({
+          where: {
+            id: prize.id,
+          },
+        });
+
+    expect(
+      persisted.amountMinor,
+    ).toBe(
+      prize.amountMinor,
+    );
+
+    expect(
+      persisted.shareBps,
+    ).toBe(
+      prize.shareBps,
+    );
+
+    expect(
+      persisted.userId,
+    ).toBe(
+      prize.userId,
+    );
+  });
+
+  it('is idempotent for both prizes and PRIZE_RECOGNIZED ledger transactions', async () => {
+    const scenario =
+      await createScenario([
+        2,
+        5,
+        1,
+      ]);
+
+    const first =
+      await winnerSelection.finalize(
+        scenario.draw.id,
+      );
+
+    const second =
+      await winnerSelection.finalize(
+        scenario.draw.id,
+      );
+
+    expect(
+      second.alreadyCompleted,
+    ).toBe(true);
+
+    expect(
+      second.winners,
+    ).toEqual(
+      first.winners,
+    );
+
+    const prizes =
+      await prisma.prize.findMany({
+        where: {
+          drawId:
+            scenario.draw.id,
+        },
+      });
+
+    expect(prizes).toHaveLength(3);
+
+    expect(
+      prizes.reduce(
+        (
+          sum,
+          prize,
+        ) =>
+          sum +
+          prize.amountMinor,
+        0n,
+      ),
+    ).toBe(350n);
+
+    const prizeIds =
+      prizes.map(
+        (prize) =>
+          prize.id,
+      );
+
+    const recognized =
+      await prisma.ledgerTransaction
+        .findMany({
+          where: {
+            type:
+              LedgerTransactionType
+                .PRIZE_RECOGNIZED,
+            referenceType:
+              'PRIZE',
+            referenceId: {
+              in: prizeIds,
+            },
+          },
+        });
+
+    expect(
+      recognized,
+    ).toHaveLength(3);
+
+    expect(
+      new Set(
+        recognized.map(
+          (transaction) =>
+            transaction.idempotencyKey,
+        ),
+      ).size,
+    ).toBe(3);
   });
 });
