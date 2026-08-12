@@ -179,7 +179,12 @@ export class UserTokenService {
 
         await transaction.user.update({
           where: { id: token.userId },
-          data: { passwordHash },
+          data: {
+            passwordHash,
+            authVersion: {
+              increment: 1,
+            },
+          },
         });
 
         await transaction.refreshToken.updateMany({

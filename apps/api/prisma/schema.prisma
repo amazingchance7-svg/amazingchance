@@ -160,6 +160,7 @@ model User {
   passwordHash    String
   status          UserStatus @default(PENDING_VERIFICATION)
   emailVerifiedAt DateTime?  @db.Timestamptz(3)
+  authVersion     Int        @default(1)
   createdAt       DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime   @updatedAt @db.Timestamptz(3)
 

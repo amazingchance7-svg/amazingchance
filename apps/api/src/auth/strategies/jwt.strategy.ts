@@ -56,7 +56,11 @@ export class JwtStrategy
       !payload.sub ||
       !payload.email ||
       typeof payload.mfa !==
-        'boolean'
+        'boolean' ||
+      !Number.isSafeInteger(
+        payload.authVersion,
+      ) ||
+      (payload.authVersion ?? 0) < 1
     ) {
       throw new UnauthorizedException(
         'Invalid access token',
@@ -66,14 +70,14 @@ export class JwtStrategy
     let user:
       Awaited<
         ReturnType<
-          UsersService['findOne']
+          UsersService['findOneForAuthSession']
         >
       >;
 
     try {
       user =
         await this.usersService
-          .findOne(
+          .findOneForAuthSession(
             payload.sub,
           );
     } catch (error) {
@@ -101,7 +105,9 @@ export class JwtStrategy
 
     if (
       user.email !==
-      payload.email
+        payload.email ||
+      user.authVersion !==
+        payload.authVersion
     ) {
       throw new UnauthorizedException(
         'Access token is no longer valid',
