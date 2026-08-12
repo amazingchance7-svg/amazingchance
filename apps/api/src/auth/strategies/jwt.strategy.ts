@@ -3,9 +3,15 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { UserStatus } from '@prisma/client';
-import { PassportStrategy } from '@nestjs/passport';
+import {
+  ConfigService,
+} from '@nestjs/config';
+import {
+  UserStatus,
+} from '@prisma/client';
+import {
+  PassportStrategy,
+} from '@nestjs/passport';
 import {
   ExtractJwt,
   Strategy,
@@ -15,23 +21,29 @@ import { UsersService } from '../../users/users.service';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(
-  Strategy,
-  'jwt',
-) {
+export class JwtStrategy
+  extends PassportStrategy(
+    Strategy,
+    'jwt',
+  )
+{
   constructor(
-    configService: ConfigService,
+    configService:
+      ConfigService,
     private readonly usersService:
       UsersService,
   ) {
     super({
       jwtFromRequest:
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
+        ExtractJwt
+          .fromAuthHeaderAsBearerToken(),
+      ignoreExpiration:
+        false,
       secretOrKey:
-        configService.getOrThrow<string>(
-          'JWT_ACCESS_SECRET',
-        ),
+        configService
+          .getOrThrow<string>(
+            'JWT_ACCESS_SECRET',
+          ),
     });
   }
 
@@ -39,9 +51,12 @@ export class JwtStrategy extends PassportStrategy(
     payload: JwtPayload,
   ) {
     if (
-      payload.type !== 'access' ||
+      payload.type !==
+        'access' ||
       !payload.sub ||
-      !payload.email
+      !payload.email ||
+      typeof payload.mfa !==
+        'boolean'
     ) {
       throw new UnauthorizedException(
         'Invalid access token',
@@ -57,13 +72,14 @@ export class JwtStrategy extends PassportStrategy(
 
     try {
       user =
-        await this.usersService.findOne(
-          payload.sub,
-        );
+        await this.usersService
+          .findOne(
+            payload.sub,
+          );
     } catch (error) {
       if (
         error instanceof
-        NotFoundException
+          NotFoundException
       ) {
         throw new UnauthorizedException(
           'Access token is no longer valid',
@@ -92,6 +108,10 @@ export class JwtStrategy extends PassportStrategy(
       );
     }
 
-    return user;
+    return {
+      ...user,
+      mfaVerified:
+        payload.mfa,
+    };
   }
 }
