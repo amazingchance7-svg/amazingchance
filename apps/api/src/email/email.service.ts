@@ -16,7 +16,8 @@ interface ResendResponse {
 
 type EmailKind =
   | 'verification'
-  | 'password-reset';
+  | 'password-reset'
+  | 'purchase-completed';
 
 @Injectable()
 export class EmailService {
@@ -78,6 +79,40 @@ export class EmailService {
     });
   }
 
+  async sendPurchaseConfirmation(
+    email: string,
+    details: {
+      purchasePublicId: string;
+      drawPublicId: string;
+      ticketNumbers: string[];
+    },
+  ): Promise<void> {
+    const ticketList =
+      details.ticketNumbers
+        .join(', ');
+
+    await this.deliver({
+      kind:
+        'purchase-completed',
+      email,
+      token:
+        details.purchasePublicId,
+      subject:
+        'Your Amazing Chance tickets are ready',
+      text:
+        [
+          `Purchase: ${details.purchasePublicId}`,
+          `Draw: ${details.drawPublicId}`,
+          `Tickets: ${ticketList}`,
+        ].join('\n'),
+      html:
+        [
+          `<p>Purchase: <strong>${details.purchasePublicId}</strong></p>`,
+          `<p>Draw: <strong>${details.drawPublicId}</strong></p>`,
+          `<p>Tickets: <strong>${ticketList}</strong></p>`,
+        ].join(''),
+    });
+  }
   private async deliver(
     message: {
       kind: EmailKind;

@@ -19,6 +19,7 @@ import { validateEnvironment } from './config/environment.validation';
 import { HealthModule } from './health/health.module';
 import { LedgerModule } from './ledger/ledger.module';
 import { LotteryDrawsModule } from './lottery-draws/lottery-draws.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PurchasesModule } from './purchases/purchases.module';
@@ -54,6 +55,7 @@ import { UsersModule } from './users/users.module';
     LotteryDrawsModule,
     LedgerModule,
     PurchasesModule,
+    NotificationsModule,
     PaymentsModule,
     SnapshotsModule,
   ],

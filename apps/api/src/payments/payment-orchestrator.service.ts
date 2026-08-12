@@ -9,6 +9,7 @@ import {
   LedgerAccountCode,
   LedgerSide,
   LedgerTransactionType,
+  NotificationOutboxType,
   PaymentStatus,
   Prisma,
   PurchaseStatus,
@@ -107,6 +108,17 @@ export class PaymentOrchestratorService {
                     orderBy: {
                       numberInDraw:
                         'asc',
+                    },
+                  },                  user: {
+                    select: {
+                      email:
+                        true,
+                    },
+                  },
+                  draw: {
+                    select: {
+                      publicId:
+                        true,
                     },
                   },
                 },
@@ -459,6 +471,51 @@ export class PaymentOrchestratorService {
           },
         });
 
+        await tx.notificationOutbox
+          .upsert({
+            where: {
+              idempotencyKey:
+                `purchase-completed:${purchase.id}`,
+            },
+            create: {
+              type:
+                NotificationOutboxType
+                  .PURCHASE_COMPLETED,
+              idempotencyKey:
+                `purchase-completed:${purchase.id}`,
+              recipientEmail:
+                purchase.user.email,
+              payload: {
+                purchasePublicId:
+                  purchase.publicId,
+                drawPublicId:
+                  purchase.draw.publicId,
+                ticketNumbers:
+                  reserved.alreadyAllocated
+                    ? purchase.tickets.map(
+                        (ticket) =>
+                          ticket.numberInDraw
+                            .toString(),
+                      )
+                    : Array.from(
+                        {
+                          length:
+                            purchase.requestedTicketCount,
+                        },
+                        (_, offset) =>
+                          (
+                            reserved
+                              .allocation
+                              .startNumber +
+                            BigInt(
+                              offset,
+                            )
+                          ).toString(),
+                      ),
+              },
+            },
+            update: {},
+          });
         return {
           purchaseId:
             purchase.id,

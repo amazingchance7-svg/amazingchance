@@ -87,6 +87,17 @@ enum TicketStatus {
   VOIDED_BY_REFUND
 }
 
+enum NotificationOutboxType {
+  PURCHASE_COMPLETED
+}
+
+enum NotificationOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
 enum SnapshotStatus {
   BUILDING
   FINALIZED
@@ -686,4 +697,24 @@ model RolePermission {
   @@id([roleId, permissionId])
   @@index([permissionId])
   @@map("role_permissions")
+}
+
+model NotificationOutbox {
+  id             String                   @id @default(uuid()) @db.Uuid
+  type           NotificationOutboxType
+  status         NotificationOutboxStatus @default(PENDING)
+  idempotencyKey String                   @unique
+  recipientEmail String
+  payload        Json
+  attempts       Int                      @default(0)
+  nextAttemptAt  DateTime                 @default(now()) @db.Timestamptz(3)
+  lockedAt       DateTime?                @db.Timestamptz(3)
+  sentAt         DateTime?                @db.Timestamptz(3)
+  lastError      String?
+  createdAt      DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                 @updatedAt @db.Timestamptz(3)
+
+  @@index([status, nextAttemptAt])
+  @@index([lockedAt])
+  @@map("notification_outbox")
 }
