@@ -26,6 +26,7 @@ import { PrizeClaimsModule } from './prize-claims/prize-claims.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { SnapshotsModule } from './snapshots/snapshots.module';
 import { UsersModule } from './users/users.module';
+import { WorkersModule } from './workers/workers.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     PaymentsModule,
     SnapshotsModule,
+    WorkersModule,
   ],
   providers: [
     {

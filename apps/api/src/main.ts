@@ -37,6 +37,8 @@ async function bootstrap(): Promise<void> {
 
   const logger = new Logger('Bootstrap');
 
+  app.enableShutdownHooks();
+
   const isProduction =
     process.env.NODE_ENV === 'production';
 

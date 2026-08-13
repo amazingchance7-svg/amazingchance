@@ -11,8 +11,14 @@ import {
 } from '@nestjs/swagger';
 
 import {
+  NotificationOutboxService,
+} from '../notifications/notification-outbox.service';
+import {
   PrismaService,
 } from '../prisma/prisma.service';
+import {
+  ProductionDrawSchedulerService,
+} from '../workers/production-draw-scheduler.service';
 
 interface HealthStatus {
   status: 'ok';
@@ -24,6 +30,10 @@ export class HealthController {
   constructor(
     private readonly prisma:
       PrismaService,
+    private readonly notificationOutbox:
+      NotificationOutboxService,
+    private readonly drawScheduler:
+      ProductionDrawSchedulerService,
   ) {}
 
   @Get()
@@ -83,6 +93,32 @@ export class HealthController {
       await this.prisma
         .$queryRaw`SELECT 1`;
     } catch {
+      throw new ServiceUnavailableException(
+        'Service is not ready',
+      );
+    }
+
+    const notificationWorker =
+      this.notificationOutbox
+        .getOperationalStatus();
+
+    if (
+      notificationWorker.enabled &&
+      !notificationWorker.healthy
+    ) {
+      throw new ServiceUnavailableException(
+        'Service is not ready',
+      );
+    }
+
+    const drawScheduler =
+      this.drawScheduler
+        .getOperationalStatus();
+
+    if (
+      drawScheduler.enabled &&
+      !drawScheduler.healthy
+    ) {
       throw new ServiceUnavailableException(
         'Service is not ready',
       );
