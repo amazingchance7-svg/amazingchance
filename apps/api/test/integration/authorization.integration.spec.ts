@@ -95,6 +95,8 @@ describe('Authorization foundation', () => {
       ),
     ).resolves.toEqual(
       [
+        Permissions.COMPLIANCE_READ_ADMIN,
+        Permissions.COMPLIANCE_REVIEW_ADMIN,
         Permissions.DRAW_READ_ADMIN,
         Permissions.OPERATIONS_READ_ADMIN,
         Permissions.PRIZE_CLAIM_REVIEW_ADMIN,
