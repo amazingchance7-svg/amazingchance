@@ -19,6 +19,7 @@ import {
   createCorrelationId,
   createPublicId,
 } from '../common/utils/identifier.util';
+import { PlayerProtectionService } from '../compliance/player-protection.service';
 import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { FinancialAllocationService } from '../finance/financial-allocation.service';
 import { LedgerService } from '../ledger/ledger.service';
@@ -53,6 +54,8 @@ export class PaymentOrchestratorService {
       TicketAllocationService,
     private readonly financialAllocation:
       FinancialAllocationService,
+    private readonly playerProtection:
+      PlayerProtectionService,
   ) {}
 
   async confirmPayment(

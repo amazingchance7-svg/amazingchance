@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
+import { PlayerProtectionService } from '../../src/compliance/player-protection.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { PurchasesService } from '../../src/purchases/purchases.service';
 import {
@@ -19,7 +20,20 @@ describe('Purchase idempotency integration', () => {
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
-    service = new PurchasesService(prisma);
+    const playerProtection = {
+      assertCanPurchaseInTransaction:
+        jest.fn().mockResolvedValue({
+          userId: 'fixture-user',
+          countryCode: 'UA',
+          policyVersion: 1,
+          minimumAge: 18,
+        }),
+    } as unknown as PlayerProtectionService;
+    service =
+      new PurchasesService(
+        prisma,
+        playerProtection,
+      );
   });
 
   beforeEach(async () => {

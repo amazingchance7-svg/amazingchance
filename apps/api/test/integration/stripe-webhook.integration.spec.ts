@@ -10,6 +10,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import Stripe from 'stripe';
 
+import { PlayerProtectionService } from '../../src/compliance/player-protection.service';
 import { FinancialAllocationService } from '../../src/finance/financial-allocation.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { PaymentOrchestratorService } from '../../src/payments/payment-orchestrator.service';
@@ -42,12 +43,21 @@ describe('Stripe webhook pipeline integration', () => {
     });
 
     stripe = new Stripe(STRIPE_SECRET_KEY);
-
+    const playerProtection = {
+      assertCanPurchaseInTransaction:
+        jest.fn().mockResolvedValue({
+          userId: 'fixture-user',
+          countryCode: 'UA',
+          policyVersion: 1,
+          minimumAge: 18,
+        }),
+    } as unknown as PlayerProtectionService;
     const orchestrator = new PaymentOrchestratorService(
       prisma,
       new LedgerService(prisma),
       new TicketAllocationService(),
       new FinancialAllocationService(prisma),
+      playerProtection,
     );
     const refundService =
       new StripeRefundService(

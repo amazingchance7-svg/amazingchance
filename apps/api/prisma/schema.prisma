@@ -135,6 +135,13 @@ enum PrizeEligibilityCheckStatus {
   FAILED
 }
 
+enum PlayerProtectionStatus {
+  ACTIVE
+  SELF_EXCLUDED
+  SUSPENDED
+  COMPLIANCE_HOLD
+}
+
 enum PayoutStatus {
   CREATED
   PENDING
@@ -192,14 +199,16 @@ model User {
   tickets               Ticket[]
   prizes                Prize[]
   payouts               Payout[]
-  prizeClaims           PrizeClaim[]            @relation("PrizeClaimUser")
-  reviewedPrizeClaims   PrizeClaim[]            @relation("PrizeClaimReviewer")
-  eligibilityChecksMade PrizeEligibilityCheck[] @relation("PrizeEligibilityCheckedBy")
+  prizeClaims           PrizeClaim[]             @relation("PrizeClaimUser")
+  reviewedPrizeClaims   PrizeClaim[]             @relation("PrizeClaimReviewer")
+  eligibilityChecksMade PrizeEligibilityCheck[]  @relation("PrizeEligibilityCheckedBy")
+  complianceProfile     PlayerComplianceProfile?
+  selfExclusions        SelfExclusion[]
   refreshTokens         RefreshToken[]
   userTokens            UserToken[]
   mfaCredential         MfaCredential?
-  roles                 UserRole[]              @relation("UserRoleUser")
-  assignedRoles         UserRole[]              @relation("UserRoleAssignedBy")
+  roles                 UserRole[]               @relation("UserRoleUser")
+  assignedRoles         UserRole[]               @relation("UserRoleAssignedBy")
 
   @@index([status])
   @@map("users")
@@ -635,6 +644,51 @@ model Payout {
   @@index([prizeId, status])
   @@index([userId, createdAt])
   @@map("payouts")
+}
+
+model JurisdictionPolicy {
+  id               String    @id @default(uuid()) @db.Uuid
+  version          Int       @unique
+  countryCode      String    @db.Char(2)
+  minimumAge       Int
+  purchasesAllowed Boolean   @default(true)
+  effectiveFrom    DateTime  @db.Timestamptz(3)
+  effectiveTo      DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([countryCode, effectiveFrom, effectiveTo])
+  @@map("jurisdiction_policies")
+}
+
+model PlayerComplianceProfile {
+  id           String                 @id @default(uuid()) @db.Uuid
+  userId       String                 @unique @db.Uuid
+  dateOfBirth  DateTime               @db.Date
+  countryCode  String                 @db.Char(2)
+  status       PlayerProtectionStatus @default(ACTIVE)
+  statusReason String?
+  verifiedAt   DateTime               @db.Timestamptz(3)
+  createdAt    DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime               @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([status, countryCode])
+  @@map("player_compliance_profiles")
+}
+
+model SelfExclusion {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  startsAt  DateTime  @default(now()) @db.Timestamptz(3)
+  endsAt    DateTime? @db.Timestamptz(3)
+  reason    String?
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, startsAt, endsAt])
+  @@map("self_exclusions")
 }
 
 model PrizeDistributionRule {

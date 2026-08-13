@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { ComplianceModule } from '../compliance/compliance.module';
+
 import { FinanceModule } from '../finance/finance.module';
 import { LedgerModule } from '../ledger/ledger.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -15,6 +17,7 @@ import { StripeWebhookService } from './stripe-webhook.service';
 @Module({
   imports: [
     ConfigModule,
+    ComplianceModule,
     PrismaModule,
     LedgerModule,
     TicketsModule,
