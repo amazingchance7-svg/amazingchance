@@ -143,6 +143,12 @@ enum PlayerProtectionStatus {
   COMPLIANCE_HOLD
 }
 
+enum ComplianceOnboardingStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
 enum PayoutStatus {
   CREATED
   PENDING
@@ -196,20 +202,23 @@ model User {
   createdAt       DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt       DateTime   @updatedAt @db.Timestamptz(3)
 
-  purchases             Purchase[]
-  tickets               Ticket[]
-  prizes                Prize[]
-  payouts               Payout[]
-  prizeClaims           PrizeClaim[]             @relation("PrizeClaimUser")
-  reviewedPrizeClaims   PrizeClaim[]             @relation("PrizeClaimReviewer")
-  eligibilityChecksMade PrizeEligibilityCheck[]  @relation("PrizeEligibilityCheckedBy")
-  complianceProfile     PlayerComplianceProfile?
-  selfExclusions        SelfExclusion[]
-  refreshTokens         RefreshToken[]
-  userTokens            UserToken[]
-  mfaCredential         MfaCredential?
-  roles                 UserRole[]               @relation("UserRoleUser")
-  assignedRoles         UserRole[]               @relation("UserRoleAssignedBy")
+  purchases                     Purchase[]
+  tickets                       Ticket[]
+  prizes                        Prize[]
+  payouts                       Payout[]
+  prizeClaims                   PrizeClaim[]                     @relation("PrizeClaimUser")
+  reviewedPrizeClaims           PrizeClaim[]                     @relation("PrizeClaimReviewer")
+  eligibilityChecksMade         PrizeEligibilityCheck[]          @relation("PrizeEligibilityCheckedBy")
+  complianceProfile             PlayerComplianceProfile?
+  selfExclusions                SelfExclusion[]
+  complianceOnboardings         ComplianceOnboarding[]           @relation("ComplianceOnboardingUser")
+  reviewedComplianceOnboardings ComplianceOnboarding[]           @relation("ComplianceOnboardingReviewer")
+  verifiedComplianceEvidence    ComplianceVerificationEvidence[] @relation("ComplianceEvidenceVerifier")
+  refreshTokens                 RefreshToken[]
+  userTokens                    UserToken[]
+  mfaCredential                 MfaCredential?
+  roles                         UserRole[]                       @relation("UserRoleUser")
+  assignedRoles                 UserRole[]                       @relation("UserRoleAssignedBy")
 
   @@index([status])
   @@map("users")
@@ -690,6 +699,49 @@ model SelfExclusion {
 
   @@index([userId, startsAt, endsAt])
   @@map("self_exclusions")
+}
+
+model ComplianceOnboarding {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  userId              String                     @db.Uuid
+  attemptNumber       Int
+  idempotencyKey      String                     @unique
+  dateOfBirth         DateTime                   @db.Date
+  countryCode         String                     @db.Char(2)
+  identityProvider    String
+  identityEvidenceRef String
+  status              ComplianceOnboardingStatus @default(PENDING_REVIEW)
+  submittedAt         DateTime                   @default(now()) @db.Timestamptz(3)
+  reviewedAt          DateTime?                  @db.Timestamptz(3)
+  reviewedByUserId    String?                    @db.Uuid
+  decisionReason      String?
+  createdAt           DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                   @updatedAt @db.Timestamptz(3)
+
+  user           User                            @relation("ComplianceOnboardingUser", fields: [userId], references: [id], onDelete: Restrict)
+  reviewedByUser User?                           @relation("ComplianceOnboardingReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  evidence       ComplianceVerificationEvidence?
+
+  @@unique([userId, attemptNumber])
+  @@index([userId, submittedAt])
+  @@index([status, submittedAt])
+  @@map("compliance_onboardings")
+}
+
+model ComplianceVerificationEvidence {
+  id               String   @id @default(uuid()) @db.Uuid
+  onboardingId     String   @unique @db.Uuid
+  evidenceRef      String
+  provider         String
+  verifiedByUserId String   @db.Uuid
+  verifiedAt       DateTime @default(now()) @db.Timestamptz(3)
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  onboarding ComplianceOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  verifiedBy User                 @relation("ComplianceEvidenceVerifier", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([verifiedByUserId, verifiedAt])
+  @@map("compliance_verification_evidence")
 }
 
 model PrizeDistributionRule {

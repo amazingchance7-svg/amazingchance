@@ -15,6 +15,8 @@ export const Permissions = {
   TICKET_READ_ADMIN: 'ticket.read.admin',
   FINANCE_READ_ADMIN: 'finance.read.admin',
   OPERATIONS_READ_ADMIN: 'operations.read.admin',
+  COMPLIANCE_READ_ADMIN: 'compliance.read.admin',
+  COMPLIANCE_REVIEW_ADMIN: 'compliance.review.admin',
   PURCHASE_REVIEW_ADMIN: 'purchase.review.admin',
   PURCHASE_CANCEL_ADMIN: 'purchase.cancel.admin',
   PURCHASE_REFUND_ADMIN: 'purchase.refund.admin',
