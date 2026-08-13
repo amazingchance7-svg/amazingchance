@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import type Stripe from 'stripe';
 
+import { PlayerProtectionService } from '../compliance/player-protection.service';
 import { createCorrelationId } from '../common/utils/identifier.util';
 import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,6 +56,8 @@ export class StripePaymentIntentService {
       PrismaService,
     private readonly stripeClient:
       StripeClient,
+    private readonly playerProtection:
+      PlayerProtectionService,
   ) {}
 
   async initiate(
@@ -188,6 +191,34 @@ export class StripePaymentIntentService {
             'Purchase not found',
           );
         }
+
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "users"
+          WHERE "id" =
+            ${purchase.userId}::uuid
+          FOR UPDATE
+        `;
+
+        await this.playerProtection
+          .assertCanPurchaseInTransaction(
+            tx,
+            purchase.userId,
+          );
+
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "users"
+          WHERE "id" =
+            ${purchase.userId}::uuid
+          FOR UPDATE
+        `;
+
+        await this.playerProtection
+          .assertCanPurchaseInTransaction(
+            tx,
+            purchase.userId,
+          );
 
         this.assertPurchaseCanPay(
           purchase,

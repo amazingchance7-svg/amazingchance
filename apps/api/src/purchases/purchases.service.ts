@@ -16,6 +16,7 @@ import {
   createCorrelationId,
   createPublicId,
 } from '../common/utils/identifier.util';
+import { PlayerProtectionService } from '../compliance/player-protection.service';
 import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
@@ -36,6 +37,8 @@ type SerializedPurchase = Omit<
 export class PurchasesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly playerProtection:
+      PlayerProtectionService,
   ) {}
 
   async create(
@@ -119,6 +122,19 @@ export class PurchasesService {
       const purchase =
         await this.prisma.$transaction(
           async (tx) => {
+            await tx.$queryRaw`
+              SELECT "id"
+              FROM "users"
+              WHERE "id" = ${userId}::uuid
+              FOR UPDATE
+            `;
+
+            await this.playerProtection
+              .assertCanPurchaseInTransaction(
+                tx,
+                userId,
+              );
+
             const createdPurchase =
               await tx.purchase.create({
                 data: {

@@ -43,6 +43,9 @@ export async function cleanTestDatabase(
   void prisma;
   await executeAdminSql(`
     TRUNCATE TABLE
+      "self_exclusions",
+      "player_compliance_profiles",
+      "jurisdiction_policies",
       "audit_logs",
       "ledger_postings",
       "ledger_transactions",

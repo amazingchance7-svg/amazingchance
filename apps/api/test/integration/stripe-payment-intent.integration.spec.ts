@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import type Stripe from 'stripe';
 
+import { PlayerProtectionService } from '../../src/compliance/player-protection.service';
 import { StripeClient } from '../../src/payments/stripe.client';
 import { StripePaymentIntentService } from '../../src/payments/stripe-payment-intent.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -46,10 +47,19 @@ describe('Stripe PaymentIntent initiation integration', () => {
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
-
+    const playerProtection = {
+      assertCanPurchaseInTransaction:
+        jest.fn().mockResolvedValue({
+          userId: 'fixture-user',
+          countryCode: 'UA',
+          policyVersion: 1,
+          minimumAge: 18,
+        }),
+    } as unknown as PlayerProtectionService;
     purchases =
       new PurchasesService(
         prisma,
+        playerProtection,
       );
 
     const stripeClient = {
@@ -61,6 +71,7 @@ describe('Stripe PaymentIntent initiation integration', () => {
       new StripePaymentIntentService(
         prisma,
         stripeClient,
+        playerProtection,
       );
   });
 

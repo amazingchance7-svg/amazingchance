@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
+import { PlayerProtectionService } from '../../src/compliance/player-protection.service';
 import { FinancialAllocationService } from '../../src/finance/financial-allocation.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { PaymentOrchestratorService } from '../../src/payments/payment-orchestrator.service';
@@ -28,7 +29,15 @@ describe('Verified payment orchestration integration', () => {
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
-
+    const playerProtection = {
+      assertCanPurchaseInTransaction:
+        jest.fn().mockResolvedValue({
+          userId: 'fixture-user',
+          countryCode: 'UA',
+          policyVersion: 1,
+          minimumAge: 18,
+        }),
+    } as unknown as PlayerProtectionService;
     service =
       new PaymentOrchestratorService(
         prisma,
@@ -37,6 +46,7 @@ describe('Verified payment orchestration integration', () => {
         new FinancialAllocationService(
           prisma,
         ),
+        playerProtection,
       );
   });
 
