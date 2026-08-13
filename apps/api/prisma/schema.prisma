@@ -621,6 +621,7 @@ model Payout {
   currency              String       @db.Char(3)
   idempotencyKey        String       @unique
   provider              String?
+  destinationRef        String?
   providerTransactionId String?      @unique
   failureCode           String?
   failureMessage        String?
@@ -630,6 +631,7 @@ model Payout {
   prize Prize @relation(fields: [prizeId], references: [id], onDelete: Restrict)
   user  User  @relation(fields: [userId], references: [id], onDelete: Restrict)
 
+  @@unique([prizeId])
   @@index([prizeId, status])
   @@index([userId, createdAt])
   @@map("payouts")
