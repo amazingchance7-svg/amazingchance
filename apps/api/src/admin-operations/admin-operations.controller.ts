@@ -21,7 +21,9 @@ import {
 } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 import { StripeRefundService } from '../payments/stripe-refund.service';
+import { ProductionDrawSchedulerService } from '../workers/production-draw-scheduler.service';
 import type { RequestContextRequest } from '../common/types/request-context.type';
 import { AdminPurchaseControlsService } from './admin-purchase-controls.service';
 import { AdminPurchaseReasonDto } from './dto/admin-purchase-reason.dto';
@@ -39,6 +41,10 @@ export class AdminOperationsController {
     private readonly adminOperationsService: AdminOperationsService,
     private readonly adminPurchaseControlsService: AdminPurchaseControlsService,
     private readonly stripeRefundService: StripeRefundService,
+    private readonly notificationOutboxService:
+      NotificationOutboxService,
+    private readonly drawSchedulerService:
+      ProductionDrawSchedulerService,
   ) {}
 
   @Get('overview')
@@ -53,6 +59,54 @@ export class AdminOperationsController {
     return this.adminOperationsService.overview();
   }
 
+  @Get('workers/notifications')
+  @RequirePermissions(
+    Permissions.OPERATIONS_READ_ADMIN,
+  )
+  @ApiOperation({
+    summary:
+      'Get notification worker and queue operational status',
+  })
+  @ApiOkResponse({
+    description:
+      'Notification worker operational status returned successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Required permission is missing.',
+  })
+  notificationWorkerStatus() {
+    return this.notificationOutboxService
+      .getOperationalSnapshot();
+  }
+  @Get('workers/draw-scheduler')
+  @RequirePermissions(
+    Permissions.OPERATIONS_READ_ADMIN,
+  )
+  @ApiOperation({
+    summary:
+      'Get production draw scheduler operational status',
+  })
+  @ApiOkResponse({
+    description:
+      'Draw scheduler operational status returned successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Required permission is missing.',
+  })
+  drawSchedulerStatus() {
+    return this.drawSchedulerService
+      .getOperationalStatus();
+  }
   @Get('users')
   @RequirePermissions(Permissions.USER_READ_ADMIN)
   @ApiOperation({ summary: 'List recent users for backoffice operations' })

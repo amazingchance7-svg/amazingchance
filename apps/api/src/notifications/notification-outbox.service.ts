@@ -41,11 +41,36 @@ type DrawPublishedPayload = {
 const POLL_INTERVAL_MS =
   5_000;
 
+export type NotificationWorkerOperationalStatus = {
+  enabled: boolean;
+  healthy: boolean;
+  inFlight: boolean;
+  lastStartedAt: Date | null;
+  lastCompletedAt: Date | null;
+  consecutiveFailures: number;
+};
+
+const WORKER_STALE_AFTER_MS =
+  30_000;
 const STALE_LOCK_MS =
   5 * 60 * 1_000;
 
 const MAX_RETRY_DELAY_MS =
   60 * 60 * 1_000;
+const MAX_DELIVERY_ATTEMPTS =
+  8;
+
+export type NotificationQueueMetrics = {
+  pending: number;
+  processing: number;
+  failed: number;
+  deadLetter: number;
+  oldestReadyAt: Date | null;
+};
+export type NotificationOperationalSnapshot = {
+  worker: NotificationWorkerOperationalStatus;
+  queue: NotificationQueueMetrics;
+};
 
 @Injectable()
 export class NotificationOutboxService
@@ -61,6 +86,22 @@ export class NotificationOutboxService
   private timer:
     NodeJS.Timeout |
     undefined;
+
+  private iterationInFlight =
+    false;
+
+  private lastStartedAt:
+    Date |
+    null =
+      null;
+
+  private lastCompletedAt:
+    Date |
+    null =
+      null;
+
+  private consecutiveFailures =
+    0;
 
   constructor(
     private readonly prisma:
@@ -85,24 +126,18 @@ export class NotificationOutboxService
     this.timer =
       setInterval(
         () => {
-          void this.processNext()
-            .catch(() => {
-              this.logger.error(
-                'Notification outbox worker iteration failed.',
-              );
-            });
+          void this.runIteration(
+            'scheduled',
+          );
         },
         POLL_INTERVAL_MS,
       );
 
     this.timer.unref();
 
-    void this.processNext()
-      .catch(() => {
-        this.logger.error(
-          'Notification outbox worker startup iteration failed.',
-        );
-      });
+    void this.runIteration(
+      'startup',
+    );
   }
 
   onModuleDestroy(): void {
@@ -115,6 +150,168 @@ export class NotificationOutboxService
     }
   }
 
+  getOperationalStatus():
+    NotificationWorkerOperationalStatus {
+    const enabled =
+      this.configService
+        .get<string>(
+          'NODE_ENV',
+        ) ===
+      'production';
+
+    const heartbeatAt =
+      this.lastCompletedAt ??
+      this.lastStartedAt;
+
+    const healthy =
+      !enabled ||
+      (
+        heartbeatAt !==
+          null &&
+        Date.now() -
+          heartbeatAt.getTime() <=
+          WORKER_STALE_AFTER_MS &&
+        this.consecutiveFailures <
+          3
+      );
+
+    return {
+      enabled,
+      healthy,
+      inFlight:
+        this.iterationInFlight,
+      lastStartedAt:
+        this.lastStartedAt,
+      lastCompletedAt:
+        this.lastCompletedAt,
+      consecutiveFailures:
+        this.consecutiveFailures,
+    };
+  }
+
+  private async runIteration(
+    source:
+      'startup' |
+      'scheduled',
+  ): Promise<void> {
+    if (
+      this.iterationInFlight
+    ) {
+      this.logger.warn(
+        `Notification outbox worker skipped overlapping ${source} iteration.`,
+      );
+      return;
+    }
+
+    this.iterationInFlight =
+      true;
+    this.lastStartedAt =
+      new Date();
+
+    try {
+      await this.processNext();
+      this.consecutiveFailures =
+        0;
+    } catch {
+      this.consecutiveFailures +=
+        1;
+      this.logger.error(
+        `Notification outbox worker ${source} iteration failed.`,
+      );
+    } finally {
+      this.lastCompletedAt =
+        new Date();
+      this.iterationInFlight =
+        false;
+    }
+  }
+  async getOperationalSnapshot():
+    Promise<NotificationOperationalSnapshot> {
+    return {
+      worker:
+        this.getOperationalStatus(),
+      queue:
+        await this.getQueueMetrics(),
+    };
+  }
+  async getQueueMetrics():
+    Promise<NotificationQueueMetrics> {
+    const now =
+      new Date();
+
+    const [
+      pending,
+      processing,
+      failed,
+      deadLetter,
+      oldest,
+    ] =
+      await this.prisma
+        .$transaction([
+          this.prisma.notificationOutbox.count({
+            where: {
+              status:
+                NotificationOutboxStatus
+                  .PENDING,
+            },
+          }),
+          this.prisma.notificationOutbox.count({
+            where: {
+              status:
+                NotificationOutboxStatus
+                  .PROCESSING,
+            },
+          }),
+          this.prisma.notificationOutbox.count({
+            where: {
+              status:
+                NotificationOutboxStatus
+                  .FAILED,
+            },
+          }),
+          this.prisma.notificationOutbox.count({
+            where: {
+              status:
+                NotificationOutboxStatus
+                  .DEAD_LETTER,
+            },
+          }),
+          this.prisma.notificationOutbox.findFirst({
+            where: {
+              status: {
+                in: [
+                  NotificationOutboxStatus
+                    .PENDING,
+                  NotificationOutboxStatus
+                    .FAILED,
+                ],
+              },
+              nextAttemptAt: {
+                lte:
+                  now,
+              },
+            },
+            orderBy: {
+              createdAt:
+                'asc',
+            },
+            select: {
+              createdAt:
+                true,
+            },
+          }),
+        ]);
+
+    return {
+      pending,
+      processing,
+      failed,
+      deadLetter,
+      oldestReadyAt:
+        oldest?.createdAt ??
+        null,
+    };
+  }
   async processNext():
     Promise<boolean> {
     const item =
@@ -194,6 +391,37 @@ export class NotificationOutboxService
 
       return true;
     } catch {
+      if (
+        item.attempts >=
+        MAX_DELIVERY_ATTEMPTS
+      ) {
+        await this.prisma
+          .notificationOutbox
+          .update({
+            where: {
+              id:
+                item.id,
+            },
+            data: {
+              status:
+                NotificationOutboxStatus
+                  .DEAD_LETTER,
+              lockedAt:
+                null,
+              lastError:
+                'DELIVERY_FAILED_MAX_ATTEMPTS',
+              deadLetteredAt:
+                new Date(),
+            },
+          });
+
+        this.logger.error(
+          `Notification outbox item ${item.id} moved to dead letter after ${item.attempts} attempts.`,
+        );
+
+        return true;
+      }
+
       const delayMs =
         Math.min(
           60_000 *

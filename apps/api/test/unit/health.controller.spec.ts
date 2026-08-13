@@ -6,6 +6,12 @@ import {
   HealthController,
 } from '../../src/health/health.controller';
 import {
+  ProductionDrawSchedulerService,
+} from '../../src/workers/production-draw-scheduler.service';
+import {
+  NotificationOutboxService,
+} from '../../src/notifications/notification-outbox.service';
+import {
   PrismaService,
 } from '../../src/prisma/prisma.service';
 
@@ -21,12 +27,52 @@ describe(
           queryRaw,
       } as unknown as PrismaService;
 
+      const notificationOutbox = {
+        getOperationalStatus:
+          jest.fn().mockReturnValue({
+            enabled:
+              false,
+            healthy:
+              true,
+            inFlight:
+              false,
+            lastStartedAt:
+              null,
+            lastCompletedAt:
+              null,
+            consecutiveFailures:
+              0,
+          }),
+      } as unknown as NotificationOutboxService;
+      const drawScheduler = {
+        getOperationalStatus:
+          jest.fn().mockReturnValue({
+            enabled:
+              false,
+            healthy:
+              true,
+            inFlight:
+              false,
+            lastStartedAt:
+              null,
+            lastCompletedAt:
+              null,
+            consecutiveFailures:
+              0,
+            lastAction:
+              null,
+          }),
+      } as unknown as ProductionDrawSchedulerService;
+
       return {
         controller:
           new HealthController(
             prisma,
+            notificationOutbox,
+            drawScheduler,
           ),
         queryRaw,
+        notificationOutbox,
       };
     }
 
@@ -125,6 +171,51 @@ describe(
       },
     );
 
+    it(
+      'fails readiness when the production notification worker is unhealthy',
+      async () => {
+        const queryRaw =
+          jest
+            .fn()
+            .mockResolvedValue([
+              {
+                '?column?': 1,
+              },
+            ]);
+
+        const harness =
+          createHarness(
+            queryRaw,
+          );
+
+        jest
+          .spyOn(
+            harness.notificationOutbox,
+            'getOperationalStatus',
+          )
+          .mockReturnValue({
+            enabled:
+              true,
+            healthy:
+              false,
+            inFlight:
+              false,
+            lastStartedAt:
+              new Date(),
+            lastCompletedAt:
+              new Date(),
+            consecutiveFailures:
+              3,
+          });
+
+        await expect(
+          harness.controller
+            .getReadiness(),
+        ).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+      },
+    );
     it(
       'keeps the legacy health route aligned with readiness',
       async () => {

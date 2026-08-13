@@ -98,6 +98,7 @@ enum NotificationOutboxStatus {
   PROCESSING
   SENT
   FAILED
+  DEAD_LETTER
 }
 
 enum SnapshotStatus {
@@ -854,11 +855,13 @@ model NotificationOutbox {
   nextAttemptAt  DateTime                 @default(now()) @db.Timestamptz(3)
   lockedAt       DateTime?                @db.Timestamptz(3)
   sentAt         DateTime?                @db.Timestamptz(3)
+  deadLetteredAt DateTime?                @db.Timestamptz(3)
   lastError      String?
   createdAt      DateTime                 @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime                 @updatedAt @db.Timestamptz(3)
 
   @@index([status, nextAttemptAt])
   @@index([lockedAt])
+  @@index([deadLetteredAt])
   @@map("notification_outbox")
 }
