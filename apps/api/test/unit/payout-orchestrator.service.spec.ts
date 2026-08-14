@@ -380,5 +380,239 @@ describe(
         );
       },
     );
+
+    it(
+      'rejects ordinary execution completion from MANUAL_REVIEW',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            id:
+              'payout-id',
+            prizeId:
+              'prize-id',
+            userId:
+              'user-id',
+            amountMinor:
+              175n,
+            currency:
+              'USD',
+            provider:
+              'NUVEI',
+            providerTransactionId:
+              'provider-transaction-id',
+            status:
+              PayoutStatus.MANUAL_REVIEW,
+            processedAt:
+              null,
+            createdAt:
+              new Date(),
+            prize: {
+              status:
+                PrizeStatus.PAYOUT_PENDING,
+              paidAt:
+                null,
+            },
+          });
+
+        await expect(
+          service.finalizeSucceeded(
+            'payout-id',
+            'provider-transaction-id',
+          ),
+        ).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+
+        expect(
+          ledger.appendInTransaction,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it(
+      'allows reconciled success from MANUAL_REVIEW through the existing ledger settlement',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            id:
+              'payout-id',
+            prizeId:
+              'prize-id',
+            userId:
+              'user-id',
+            amountMinor:
+              175n,
+            currency:
+              'USD',
+            provider:
+              'NUVEI',
+            providerTransactionId:
+              'provider-transaction-id',
+            status:
+              PayoutStatus.MANUAL_REVIEW,
+            processedAt:
+              null,
+            createdAt:
+              new Date(),
+            prize: {
+              status:
+                PrizeStatus.PAYOUT_PENDING,
+              paidAt:
+                null,
+            },
+          });
+
+        ledgerFindFirst
+          .mockResolvedValue({
+            id:
+              'recognition-ledger-id',
+            sealedAt:
+              new Date(),
+            postings: [
+              {
+                accountCode:
+                  LedgerAccountCode
+                    .PRIZE_PAYABLE,
+                side:
+                  LedgerSide.CREDIT,
+                amountMinor:
+                  175n,
+              },
+            ],
+          });
+
+        ledger.appendInTransaction
+          .mockResolvedValue({
+            transaction: {
+              id:
+                'payout-ledger-id',
+            },
+            alreadyAppended:
+              false,
+          });
+
+        payoutUpdate
+          .mockResolvedValue({});
+
+        prizeUpdateMany
+          .mockResolvedValue({
+            count:
+              1,
+          });
+
+        await expect(
+          service
+            .finalizeReconciledSucceeded(
+              'payout-id',
+              'provider-transaction-id',
+            ),
+        ).resolves.toMatchObject({
+          payoutId:
+            'payout-id',
+          ledgerTransactionId:
+            'payout-ledger-id',
+          alreadyProcessed:
+            false,
+        });
+
+        expect(
+          ledger.appendInTransaction,
+        ).toHaveBeenCalledWith(
+          tx,
+          expect.objectContaining({
+            type:
+              LedgerTransactionType
+                .PAYOUT_COMPLETED,
+          }),
+        );
+      },
+    );
+
+    it(
+      'rejects ordinary execution failure from MANUAL_REVIEW',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            id:
+              'payout-id',
+            providerTransactionId:
+              'provider-transaction-id',
+            status:
+              PayoutStatus.MANUAL_REVIEW,
+          });
+
+        await expect(
+          service.markFailed(
+            'payout-id',
+            {
+              providerTransactionId:
+                'provider-transaction-id',
+              failureCode:
+                'DECLINED',
+              failureMessage:
+                'Provider declined payout',
+            },
+          ),
+        ).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+
+        expect(
+          payoutUpdate,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it(
+      'allows reconciled definitive failure from MANUAL_REVIEW',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            id:
+              'payout-id',
+            providerTransactionId:
+              'provider-transaction-id',
+            status:
+              PayoutStatus.MANUAL_REVIEW,
+          });
+
+        payoutUpdate
+          .mockResolvedValue({});
+
+        await expect(
+          service.markReconciledFailed(
+            'payout-id',
+            {
+              providerTransactionId:
+                'provider-transaction-id',
+              failureCode:
+                'NUVEI_RECONCILIATION_DECLINED',
+              failureMessage:
+                'Nuvei confirmed payout was declined',
+            },
+          ),
+        ).resolves.toBeUndefined();
+
+        expect(
+          payoutUpdate,
+        ).toHaveBeenCalledWith({
+          where: {
+            id:
+              'payout-id',
+          },
+          data:
+            expect.objectContaining({
+              status:
+                PayoutStatus.FAILED,
+              providerTransactionId:
+                'provider-transaction-id',
+              failureCode:
+                'NUVEI_RECONCILIATION_DECLINED',
+              failureMessage:
+                'Nuvei confirmed payout was declined',
+            }),
+        });
+      },
+    );
   },
 );

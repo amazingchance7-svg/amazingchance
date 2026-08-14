@@ -55,6 +55,25 @@ export type PayoutExecutionInstruction = {
   idempotencyKey: string;
 };
 
+export type PayoutReconciliationInstruction = {
+  payoutId:
+    string;
+  prizeId:
+    string;
+  userId:
+    string;
+  amountMinor:
+    string;
+  currency:
+    string;
+  provider:
+    string;
+  providerTransactionId:
+    string | null;
+};
+type PayoutTerminalSource =
+  | 'EXECUTION'
+  | 'RECONCILIATION';
 export type PayoutCompletionResult = {
   payoutId: string;
   prizeId: string;
@@ -347,6 +366,76 @@ export class PayoutOrchestratorService {
     );
   }
 
+  async prepareReconciliation(
+    payoutId: string,
+  ): Promise<PayoutReconciliationInstruction> {
+    const payout =
+      await this.prisma.payout.findUnique({
+        where: {
+          id:
+            payoutId,
+        },
+        select: {
+          id:
+            true,
+          prizeId:
+            true,
+          userId:
+            true,
+          amountMinor:
+            true,
+          currency:
+            true,
+          provider:
+            true,
+          providerTransactionId:
+            true,
+          status:
+            true,
+        },
+      });
+
+    if (!payout) {
+      throw new NotFoundException(
+        'Payout not found',
+      );
+    }
+
+    if (
+      payout.status !==
+        PayoutStatus.PENDING &&
+      payout.status !==
+        PayoutStatus.MANUAL_REVIEW
+    ) {
+      throw new ConflictException(
+        `Payout in ${payout.status} cannot be reconciled`,
+      );
+    }
+
+    if (!payout.provider) {
+      throw new ConflictException(
+        'Payout reconciliation is missing provider evidence',
+      );
+    }
+
+    return {
+      payoutId:
+        payout.id,
+      prizeId:
+        payout.prizeId,
+      userId:
+        payout.userId,
+      amountMinor:
+        payout.amountMinor
+          .toString(),
+      currency:
+        payout.currency,
+      provider:
+        payout.provider,
+      providerTransactionId:
+        payout.providerTransactionId,
+    };
+  }
   recordProviderPending(
     payoutId: string,
     providerTransactionId: string,
@@ -424,9 +513,22 @@ export class PayoutOrchestratorService {
     );
   }
 
+  finalizeReconciledSucceeded(
+    payoutId: string,
+    providerTransactionId: string,
+  ): Promise<PayoutCompletionResult> {
+    return this.finalizeSucceeded(
+      payoutId,
+      providerTransactionId,
+      'RECONCILIATION',
+    );
+  }
   finalizeSucceeded(
     payoutId: string,
     providerTransactionId: string,
+    source:
+      PayoutTerminalSource =
+        'EXECUTION',
   ): Promise<PayoutCompletionResult> {
     return this.prisma.$transaction(
       async (tx) => {
@@ -521,11 +623,18 @@ export class PayoutOrchestratorService {
           };
         }
 
+        const reconciliationAllowed =
+          source ===
+            'RECONCILIATION' &&
+          payout.status ===
+            PayoutStatus.MANUAL_REVIEW;
+
         if (
           payout.status !==
             PayoutStatus.PROCESSING &&
           payout.status !==
-            PayoutStatus.PENDING
+            PayoutStatus.PENDING &&
+          !reconciliationAllowed
         ) {
           throw new ConflictException(
             `Payout in ${payout.status} cannot be completed`,
@@ -719,6 +828,24 @@ export class PayoutOrchestratorService {
     );
   }
 
+  markReconciledFailed(
+    payoutId: string,
+    input: {
+      providerTransactionId?:
+        string;
+      failureCode:
+        string;
+      failureMessage:
+        string;
+    },
+  ): Promise<void> {
+    return this.markFailed(
+      payoutId,
+      input,
+      'RECONCILIATION',
+    );
+  }
+
   markFailed(
     payoutId: string,
     input: {
@@ -729,6 +856,9 @@ export class PayoutOrchestratorService {
       failureMessage:
         string;
     },
+    source:
+      PayoutTerminalSource =
+        'EXECUTION',
   ): Promise<void> {
     return this.prisma.$transaction(
       async (tx) => {
@@ -758,11 +888,18 @@ export class PayoutOrchestratorService {
           return;
         }
 
+        const reconciliationAllowed =
+          source ===
+            'RECONCILIATION' &&
+          payout.status ===
+            PayoutStatus.MANUAL_REVIEW;
+
         if (
           payout.status !==
             PayoutStatus.PROCESSING &&
           payout.status !==
-            PayoutStatus.PENDING
+            PayoutStatus.PENDING &&
+          !reconciliationAllowed
         ) {
           throw new ConflictException(
             `Payout in ${payout.status} cannot fail provider execution`,

@@ -24,6 +24,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 import { StripeRefundService } from '../payments/stripe-refund.service';
 import { ProductionDrawSchedulerService } from '../workers/production-draw-scheduler.service';
+import { ProductionPayoutReconciliationWorkerService } from '../workers/production-payout-reconciliation-worker.service';
 import { ProductionPayoutWorkerService } from '../workers/production-payout-worker.service';
 import type { RequestContextRequest } from '../common/types/request-context.type';
 import { AdminPurchaseControlsService } from './admin-purchase-controls.service';
@@ -48,7 +49,9 @@ export class AdminOperationsController {
       ProductionDrawSchedulerService,
       private readonly payoutWorkerService:
       ProductionPayoutWorkerService,
-  ) {}
+
+    private readonly payoutReconciliationWorkerService:
+      ProductionPayoutReconciliationWorkerService,) {}
 
   @Get('overview')
   @RequirePermissions(Permissions.FINANCE_READ_ADMIN)
@@ -135,6 +138,31 @@ export class AdminOperationsController {
       .getOperationalStatus();
   }
 
+  @Get('workers/payout-reconciliation')
+  @RequirePermissions(
+    Permissions.OPERATIONS_READ_ADMIN,
+  )
+  @ApiOperation({
+    summary:
+      'Get production payout reconciliation worker operational status',
+  })
+  @ApiOkResponse({
+    description:
+      'Payout reconciliation worker operational status returned successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Required permission is missing.',
+  })
+  payoutReconciliationWorkerStatus() {
+    return this
+      .payoutReconciliationWorkerService
+      .getOperationalStatus();
+  }
   @Get('users')
   @RequirePermissions(Permissions.USER_READ_ADMIN)
   @ApiOperation({ summary: 'List recent users for backoffice operations' })

@@ -1,4 +1,4 @@
-﻿import {
+import {
   Injectable,
 } from '@nestjs/common';
 import {
@@ -12,6 +12,7 @@ import {
 } from './payout-gateway';
 import type {
   PayoutExecutionInstruction,
+  PayoutReconciliationInstruction,
 } from './payout-orchestrator.service';
 
 const NUVEI_PROVIDER =
@@ -23,6 +24,24 @@ const DEFAULT_BASE_URL =
 const REQUEST_TIMEOUT_MS =
   15_000;
 
+type NuveiTransactionDetailsResponse = {
+  transactionDetails?: {
+    transactionStatus?: unknown;
+    transactionType?: unknown;
+    merchantTransactionId?: unknown;
+    transactionId?: unknown;
+    processedAmount?: unknown;
+    processedCurrency?: unknown;
+    errorDescription?: unknown;
+  };
+  result?: {
+    status?: unknown;
+    errors?: {
+      code?: unknown;
+      reason?: unknown;
+    };
+  };
+};
 type NuveiPayoutResponse = {
   payoutId?: unknown;
   transactionId?: unknown;
@@ -185,6 +204,442 @@ export class NuveiPayoutGateway
     }
   }
 
+  async reconcile(
+    instruction:
+      PayoutReconciliationInstruction,
+  ): Promise<PayoutGatewayResult> {
+    if (
+      instruction.provider
+        .trim()
+        .toUpperCase() !==
+      NUVEI_PROVIDER
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        failureCode:
+          'NUVEI_PROVIDER_MISMATCH',
+        failureMessage:
+          'Payout reconciliation provider does not match Nuvei gateway.',
+      };
+    }
+
+    const apiKey =
+      this.requiredConfig(
+        'NUVEI_API_KEY',
+      );
+
+    const processingEntityId =
+      this.requiredConfig(
+        'NUVEI_PROCESSING_ENTITY_ID',
+      );
+
+    const baseUrl =
+      (
+        this.config.get<string>(
+          'NUVEI_BASE_URL',
+        ) ??
+        DEFAULT_BASE_URL
+      ).replace(/\/+$/, '');
+
+    const merchantTransactionId =
+      this.merchantTransactionId(
+        instruction.payoutId,
+      );
+
+    const lookupId =
+      instruction
+        .providerTransactionId
+        ?.trim() ||
+      merchantTransactionId;
+
+    const source =
+      instruction
+        .providerTransactionId
+        ?.trim()
+        ? 'Nuvei'
+        : 'Merchant';
+
+    const controller =
+      new AbortController();
+
+    const timeout =
+      setTimeout(
+        () => {
+          controller.abort();
+        },
+        REQUEST_TIMEOUT_MS,
+      );
+
+    try {
+      const url =
+        `${baseUrl}/entities/${encodeURIComponent(
+          processingEntityId,
+        )}/transactions/${encodeURIComponent(
+          lookupId,
+        )}?source=${source}`;
+
+      const response =
+        await fetch(
+          url,
+          {
+            method:
+              'GET',
+            headers: {
+              'x-api-key':
+                apiKey,
+            },
+            signal:
+              controller.signal,
+          },
+        );
+
+      if (
+        response.status ===
+        404
+      ) {
+        return {
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_TRANSACTION_NOT_FOUND',
+          failureMessage:
+            'Nuvei transaction was not found during payout reconciliation.',
+        };
+      }
+
+      let payload:
+        NuveiTransactionDetailsResponse;
+
+      try {
+        payload =
+          (await response.json()) as
+            NuveiTransactionDetailsResponse;
+      } catch {
+        return {
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_RECONCILIATION_INVALID_RESPONSE',
+          failureMessage:
+            `Nuvei reconciliation returned HTTP ${response.status} with an unreadable response body.`,
+        };
+      }
+
+      if (
+        response.status >=
+        500
+      ) {
+        return {
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_RECONCILIATION_PROVIDER_ERROR',
+          failureMessage:
+            `Nuvei reconciliation returned HTTP ${response.status}.`,
+        };
+      }
+
+      if (
+        response.status <
+          200 ||
+        response.status >=
+          300
+      ) {
+        return {
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            `NUVEI_RECONCILIATION_HTTP_${response.status}`,
+          failureMessage:
+            'Nuvei reconciliation request was not successful.',
+        };
+      }
+
+      return this.mapReconciliationResult(
+        instruction,
+        merchantTransactionId,
+        payload,
+      );
+    } catch (error) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        failureCode:
+          error instanceof Error &&
+          error.name === 'AbortError'
+            ? 'NUVEI_RECONCILIATION_TIMEOUT'
+            : 'NUVEI_RECONCILIATION_TRANSPORT_ERROR',
+        failureMessage:
+          error instanceof Error
+            ? error.message
+            : 'Nuvei reconciliation ended with an unknown transport outcome.',
+      };
+    } finally {
+      clearTimeout(
+        timeout,
+      );
+    }
+  }
+
+  private mapReconciliationResult(
+    instruction:
+      PayoutReconciliationInstruction,
+    expectedMerchantTransactionId:
+      string,
+    payload:
+      NuveiTransactionDetailsResponse,
+  ): PayoutGatewayResult {
+    const details =
+      payload.transactionDetails;
+
+    if (!details) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        failureCode:
+          'NUVEI_RECONCILIATION_MISSING_DETAILS',
+        failureMessage:
+          'Nuvei reconciliation response is missing transaction details.',
+      };
+    }
+
+    const transactionType =
+      typeof details.transactionType ===
+        'string'
+        ? details.transactionType
+            .trim()
+            .toLowerCase()
+        : '';
+
+    const transactionStatus =
+      typeof details.transactionStatus ===
+        'string'
+        ? details.transactionStatus
+            .trim()
+            .toUpperCase()
+        : '';
+
+    const merchantTransactionId =
+      typeof details.merchantTransactionId ===
+        'string'
+        ? details.merchantTransactionId.trim()
+        : '';
+
+    const providerTransactionId =
+      typeof details.transactionId ===
+        'string'
+        ? details.transactionId.trim()
+        : '';
+
+    const processedCurrency =
+      typeof details.processedCurrency ===
+        'string'
+        ? details.processedCurrency
+            .trim()
+            .toUpperCase()
+        : '';
+
+    const processedAmount =
+      typeof details.processedAmount ===
+        'string'
+        ? details.processedAmount.trim()
+        : '';
+
+    if (
+      transactionType !==
+      'payout'
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        providerTransactionId:
+          providerTransactionId ||
+          undefined,
+        failureCode:
+          'NUVEI_RECONCILIATION_TYPE_MISMATCH',
+        failureMessage:
+          'Nuvei reconciliation matched a transaction that is not a payout.',
+      };
+    }
+
+    if (
+      merchantTransactionId !==
+      expectedMerchantTransactionId
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        providerTransactionId:
+          providerTransactionId ||
+          undefined,
+        failureCode:
+          'NUVEI_RECONCILIATION_MERCHANT_ID_MISMATCH',
+        failureMessage:
+          'Nuvei reconciliation merchant transaction ID does not match the payout.',
+      };
+    }
+
+    if (
+      instruction
+        .providerTransactionId &&
+      providerTransactionId !==
+        instruction
+          .providerTransactionId
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        providerTransactionId:
+          providerTransactionId ||
+          undefined,
+        failureCode:
+          'NUVEI_RECONCILIATION_PROVIDER_ID_MISMATCH',
+        failureMessage:
+          'Nuvei reconciliation provider transaction ID does not match recorded evidence.',
+      };
+    }
+
+    if (
+      processedCurrency !==
+      instruction.currency
+        .trim()
+        .toUpperCase()
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        providerTransactionId:
+          providerTransactionId ||
+          undefined,
+        failureCode:
+          'NUVEI_RECONCILIATION_CURRENCY_MISMATCH',
+        failureMessage:
+          'Nuvei reconciliation currency does not match the payout.',
+      };
+    }
+
+    const expectedAmount =
+      this.toMajorAmount(
+        instruction.amountMinor,
+        instruction.currency,
+      );
+
+    const actualAmount =
+      Number(
+        processedAmount,
+      );
+
+    if (
+      !Number.isFinite(
+        actualAmount,
+      ) ||
+      Math.abs(
+        actualAmount -
+          expectedAmount,
+      ) >
+        0.000001
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .AMBIGUOUS,
+        providerTransactionId:
+          providerTransactionId ||
+          undefined,
+        failureCode:
+          'NUVEI_RECONCILIATION_AMOUNT_MISMATCH',
+        failureMessage:
+          'Nuvei reconciliation amount does not match the payout.',
+      };
+    }
+
+    if (
+      transactionStatus ===
+      'APPROVED'
+    ) {
+      if (
+        !providerTransactionId
+      ) {
+        return {
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_RECONCILIATION_APPROVED_WITHOUT_TRANSACTION_ID',
+          failureMessage:
+            'Nuvei reconciliation reported an approved payout without a transaction ID.',
+        };
+      }
+
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .SUCCEEDED,
+        providerTransactionId,
+      };
+    }
+
+    if (
+      transactionStatus ===
+      'DECLINED'
+    ) {
+      return {
+        outcome:
+          PayoutGatewayOutcome
+            .FAILED,
+        providerTransactionId:
+          providerTransactionId ||
+          undefined,
+        failureCode:
+          'NUVEI_RECONCILIATION_DECLINED',
+        failureMessage:
+          typeof details.errorDescription ===
+            'string' &&
+          details.errorDescription.trim()
+            ? details.errorDescription.trim()
+            : 'Nuvei reconciliation confirmed that the payout was declined.',
+      };
+    }
+
+    /*
+     * Retrieve Transaction Details currently
+     * documents APPROVED, DECLINED and ERROR.
+     * Any non-definitive/unknown value remains
+     * unresolved rather than triggering payout
+     * execution.
+     */
+    return {
+      outcome:
+        PayoutGatewayOutcome
+          .AMBIGUOUS,
+      providerTransactionId:
+        providerTransactionId ||
+        undefined,
+      failureCode:
+        transactionStatus ===
+          'ERROR'
+          ? 'NUVEI_RECONCILIATION_ERROR'
+          : 'NUVEI_RECONCILIATION_UNKNOWN_STATUS',
+      failureMessage:
+        typeof details.errorDescription ===
+          'string' &&
+        details.errorDescription.trim()
+          ? details.errorDescription.trim()
+          : `Nuvei reconciliation returned transaction status ${transactionStatus || 'unknown'}.`,
+    };
+  }
   private mapResult(
     httpStatus: number,
     payload:

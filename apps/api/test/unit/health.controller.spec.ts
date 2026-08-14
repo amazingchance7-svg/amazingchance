@@ -1,10 +1,13 @@
-import {
+﻿import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 
 import {
   HealthController,
 } from '../../src/health/health.controller';
+import {
+  ProductionPayoutReconciliationWorkerService,
+} from '../../src/workers/production-payout-reconciliation-worker.service';
 import {
   ProductionDrawSchedulerService,
 } from '../../src/workers/production-draw-scheduler.service';
@@ -47,6 +50,7 @@ describe(
               0,
           }),
       } as unknown as NotificationOutboxService;
+
       const drawScheduler = {
         getOperationalStatus:
           jest.fn().mockReturnValue({
@@ -87,6 +91,26 @@ describe(
           }),
       } as unknown as ProductionPayoutWorkerService;
 
+      const payoutReconciliationWorker = {
+        getOperationalStatus:
+          jest.fn().mockReturnValue({
+            enabled:
+              false,
+            healthy:
+              true,
+            inFlight:
+              false,
+            lastStartedAt:
+              null,
+            lastCompletedAt:
+              null,
+            consecutiveFailures:
+              0,
+            lastAction:
+              null,
+          }),
+      } as unknown as ProductionPayoutReconciliationWorkerService;
+
       return {
         controller:
           new HealthController(
@@ -94,10 +118,12 @@ describe(
             notificationOutbox,
             drawScheduler,
             payoutWorker,
+            payoutReconciliationWorker,
           ),
         queryRaw,
         notificationOutbox,
         payoutWorker,
+        payoutReconciliationWorker,
       };
     }
 
@@ -241,6 +267,7 @@ describe(
         );
       },
     );
+
     it(
       'fails readiness when the production payout worker is unhealthy',
       async () => {
@@ -288,6 +315,55 @@ describe(
         );
       },
     );
+
+    it(
+      'fails readiness when payout reconciliation is unhealthy',
+      async () => {
+        const queryRaw =
+          jest
+            .fn()
+            .mockResolvedValue([
+              {
+                '?column?': 1,
+              },
+            ]);
+
+        const harness =
+          createHarness(
+            queryRaw,
+          );
+
+        jest
+          .spyOn(
+            harness.payoutReconciliationWorker,
+            'getOperationalStatus',
+          )
+          .mockReturnValue({
+            enabled:
+              true,
+            healthy:
+              false,
+            inFlight:
+              false,
+            lastStartedAt:
+              new Date(),
+            lastCompletedAt:
+              new Date(),
+            consecutiveFailures:
+              3,
+            lastAction:
+              null,
+          });
+
+        await expect(
+          harness.controller
+            .getReadiness(),
+        ).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+      },
+    );
+
     it(
       'keeps the legacy health route aligned with readiness',
       async () => {
