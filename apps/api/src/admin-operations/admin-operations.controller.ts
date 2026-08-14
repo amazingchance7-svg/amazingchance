@@ -24,6 +24,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { NotificationOutboxService } from '../notifications/notification-outbox.service';
 import { StripeRefundService } from '../payments/stripe-refund.service';
 import { ProductionDrawSchedulerService } from '../workers/production-draw-scheduler.service';
+import { ProductionPayoutWorkerService } from '../workers/production-payout-worker.service';
 import type { RequestContextRequest } from '../common/types/request-context.type';
 import { AdminPurchaseControlsService } from './admin-purchase-controls.service';
 import { AdminPurchaseReasonDto } from './dto/admin-purchase-reason.dto';
@@ -45,6 +46,8 @@ export class AdminOperationsController {
       NotificationOutboxService,
     private readonly drawSchedulerService:
       ProductionDrawSchedulerService,
+      private readonly payoutWorkerService:
+      ProductionPayoutWorkerService,
   ) {}
 
   @Get('overview')
@@ -107,6 +110,31 @@ export class AdminOperationsController {
     return this.drawSchedulerService
       .getOperationalStatus();
   }
+  @Get('workers/payouts')
+  @RequirePermissions(
+    Permissions.OPERATIONS_READ_ADMIN,
+  )
+  @ApiOperation({
+    summary:
+      'Get production payout worker operational status',
+  })
+  @ApiOkResponse({
+    description:
+      'Payout worker operational status returned successfully.',
+  })
+  @ApiUnauthorizedResponse({
+    description:
+      'Authentication is required.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Required permission is missing.',
+  })
+  payoutWorkerStatus() {
+    return this.payoutWorkerService
+      .getOperationalStatus();
+  }
+
   @Get('users')
   @RequirePermissions(Permissions.USER_READ_ADMIN)
   @ApiOperation({ summary: 'List recent users for backoffice operations' })

@@ -4,6 +4,7 @@ import {
 } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -127,6 +128,33 @@ class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   STRIPE_WEBHOOK_SECRET?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  NUVEI_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  NUVEI_PROCESSING_ENTITY_ID?: string;
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    protocols: [
+      'http',
+      'https',
+    ],
+  })
+  NUVEI_BASE_URL?: string;
+
+  @IsOptional()
+  @IsIn([
+    'true',
+    'false',
+  ])
+  PAYOUT_WORKER_ENABLED?: string;
 }
 
 function assertProductionDatabaseUrl(
@@ -488,5 +516,48 @@ export function validateEnvironment(
     );
   }
 
+  if (
+    validatedConfig
+      .PAYOUT_WORKER_ENABLED ===
+    'true'
+  ) {
+    if (
+      !validatedConfig
+        .NUVEI_API_KEY ||
+      !validatedConfig
+        .NUVEI_PROCESSING_ENTITY_ID ||
+      !validatedConfig
+        .NUVEI_BASE_URL
+    ) {
+      throw new Error(
+        'Environment validation failed: Nuvei configuration is required when PAYOUT_WORKER_ENABLED=true',
+      );
+    }
+
+    if (
+      !validatedConfig
+        .NUVEI_BASE_URL
+        .startsWith(
+          'https://',
+        )
+    ) {
+      throw new Error(
+        'Environment validation failed: NUVEI_BASE_URL must use https when payout worker is enabled',
+      );
+    }
+
+    if (
+      validatedConfig
+        .NUVEI_BASE_URL
+        .toLowerCase()
+        .includes(
+          'sandbox',
+        )
+    ) {
+      throw new Error(
+        'Environment validation failed: production payout worker cannot use a Nuvei sandbox endpoint',
+      );
+    }
+  }
   return validatedConfig;
 }

@@ -9,6 +9,9 @@ import {
   ProductionDrawSchedulerService,
 } from '../../src/workers/production-draw-scheduler.service';
 import {
+  ProductionPayoutWorkerService,
+} from '../../src/workers/production-payout-worker.service';
+import {
   NotificationOutboxService,
 } from '../../src/notifications/notification-outbox.service';
 import {
@@ -64,15 +67,37 @@ describe(
           }),
       } as unknown as ProductionDrawSchedulerService;
 
+      const payoutWorker = {
+        getOperationalStatus:
+          jest.fn().mockReturnValue({
+            enabled:
+              false,
+            healthy:
+              true,
+            inFlight:
+              false,
+            lastStartedAt:
+              null,
+            lastCompletedAt:
+              null,
+            consecutiveFailures:
+              0,
+            lastAction:
+              null,
+          }),
+      } as unknown as ProductionPayoutWorkerService;
+
       return {
         controller:
           new HealthController(
             prisma,
             notificationOutbox,
             drawScheduler,
+            payoutWorker,
           ),
         queryRaw,
         notificationOutbox,
+        payoutWorker,
       };
     }
 
@@ -206,6 +231,53 @@ describe(
               new Date(),
             consecutiveFailures:
               3,
+          });
+
+        await expect(
+          harness.controller
+            .getReadiness(),
+        ).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+      },
+    );
+    it(
+      'fails readiness when the production payout worker is unhealthy',
+      async () => {
+        const queryRaw =
+          jest
+            .fn()
+            .mockResolvedValue([
+              {
+                '?column?': 1,
+              },
+            ]);
+
+        const harness =
+          createHarness(
+            queryRaw,
+          );
+
+        jest
+          .spyOn(
+            harness.payoutWorker,
+            'getOperationalStatus',
+          )
+          .mockReturnValue({
+            enabled:
+              true,
+            healthy:
+              false,
+            inFlight:
+              false,
+            lastStartedAt:
+              new Date(),
+            lastCompletedAt:
+              new Date(),
+            consecutiveFailures:
+              3,
+            lastAction:
+              null,
           });
 
         await expect(

@@ -19,6 +19,9 @@ import {
 import {
   ProductionDrawSchedulerService,
 } from '../workers/production-draw-scheduler.service';
+import {
+  ProductionPayoutWorkerService,
+} from '../workers/production-payout-worker.service';
 
 interface HealthStatus {
   status: 'ok';
@@ -34,6 +37,8 @@ export class HealthController {
       NotificationOutboxService,
     private readonly drawScheduler:
       ProductionDrawSchedulerService,
+      private readonly payoutWorker:
+      ProductionPayoutWorkerService,
   ) {}
 
   @Get()
@@ -118,6 +123,19 @@ export class HealthController {
     if (
       drawScheduler.enabled &&
       !drawScheduler.healthy
+    ) {
+      throw new ServiceUnavailableException(
+        'Service is not ready',
+      );
+    }
+
+    const payoutWorker =
+      this.payoutWorker
+        .getOperationalStatus();
+
+    if (
+      payoutWorker.enabled &&
+      !payoutWorker.healthy
     ) {
       throw new ServiceUnavailableException(
         'Service is not ready',
