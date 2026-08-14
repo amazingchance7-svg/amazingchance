@@ -1,4 +1,4 @@
-import {
+﻿import {
   AdminOperationsController,
 } from '../../src/admin-operations/admin-operations.controller';
 import {
@@ -13,6 +13,9 @@ import {
 import {
   ProductionDrawSchedulerService,
 } from '../../src/workers/production-draw-scheduler.service';
+import {
+  ProductionPayoutReconciliationWorkerService,
+} from '../../src/workers/production-payout-reconciliation-worker.service';
 import {
   ProductionPayoutWorkerService,
 } from '../../src/workers/production-payout-worker.service';
@@ -66,6 +69,7 @@ describe(
                 snapshot,
               ),
         } as unknown as NotificationOutboxService;
+
         const drawScheduler = {
           getOperationalStatus:
             jest.fn().mockReturnValue({
@@ -106,6 +110,26 @@ describe(
             }),
         } as unknown as ProductionPayoutWorkerService;
 
+        const payoutReconciliationWorker = {
+          getOperationalStatus:
+            jest.fn().mockReturnValue({
+              enabled:
+                true,
+              healthy:
+                true,
+              inFlight:
+                false,
+              lastStartedAt:
+                null,
+              lastCompletedAt:
+                null,
+              consecutiveFailures:
+                0,
+              lastAction:
+                'IDLE',
+            }),
+        } as unknown as ProductionPayoutReconciliationWorkerService;
+
         const controller =
           new AdminOperationsController(
             {} as never,
@@ -114,6 +138,7 @@ describe(
             notificationOutbox,
             drawScheduler,
             payoutWorker,
+            payoutReconciliationWorker,
           );
 
         await expect(
@@ -189,6 +214,7 @@ describe(
             {} as never,
             {} as never,
             payoutWorker,
+            {} as never,
           );
 
         expect(
@@ -209,6 +235,86 @@ describe(
             AdminOperationsController
               .prototype
               .payoutWorkerStatus,
+          );
+
+        expect(
+          permissions,
+        ).toEqual([
+          Permissions
+            .OPERATIONS_READ_ADMIN,
+        ]);
+      },
+    );
+
+    it(
+      'returns payout reconciliation worker operational status',
+      () => {
+        const reconciliationStatus = {
+          enabled:
+            true,
+          healthy:
+            true,
+          inFlight:
+            false,
+          lastStartedAt:
+            new Date(
+              '2026-08-14T14:00:00.000Z',
+            ),
+          lastCompletedAt:
+            new Date(
+              '2026-08-14T14:00:01.000Z',
+            ),
+          consecutiveFailures:
+            0,
+          lastAction:
+            'RECONCILIATION_AMBIGUOUS',
+        };
+
+        const payoutReconciliationWorker = {
+          getOperationalStatus:
+            jest
+              .fn()
+              .mockReturnValue(
+                reconciliationStatus,
+              ),
+        } as unknown as ProductionPayoutReconciliationWorkerService;
+
+        const controller =
+          new AdminOperationsController(
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            payoutReconciliationWorker,
+          );
+
+        expect(
+          controller
+            .payoutReconciliationWorkerStatus(),
+        ).toEqual(
+          reconciliationStatus,
+        );
+
+        expect(
+          payoutReconciliationWorker
+            .getOperationalStatus,
+        ).toHaveBeenCalledTimes(
+          1,
+        );
+      },
+    );
+
+    it(
+      'protects payout reconciliation worker status with operations read permission',
+      () => {
+        const permissions =
+          Reflect.getMetadata(
+            REQUIRED_PERMISSIONS_KEY,
+            AdminOperationsController
+              .prototype
+              .payoutReconciliationWorkerStatus,
           );
 
         expect(

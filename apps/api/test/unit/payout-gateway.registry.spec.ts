@@ -13,12 +13,20 @@ function gateway(
 ): PayoutGateway {
   return {
     provider,
-    execute: jest.fn().mockResolvedValue({
-      outcome:
-        PayoutGatewayOutcome.SUCCEEDED,
-      providerTransactionId:
-        'provider-transaction-1',
-    }),
+    execute:
+      jest.fn().mockResolvedValue({
+        outcome:
+          PayoutGatewayOutcome.SUCCEEDED,
+        providerTransactionId:
+          'provider-transaction-1',
+      }),
+    reconcile:
+      jest.fn().mockResolvedValue({
+        outcome:
+          PayoutGatewayOutcome.SUCCEEDED,
+        providerTransactionId:
+          'provider-transaction-1',
+      }),
   };
 }
 

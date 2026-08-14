@@ -632,20 +632,23 @@ model PrizeEligibilityCheck {
 }
 
 model Payout {
-  id                    String       @id @default(uuid()) @db.Uuid
-  prizeId               String       @db.Uuid
-  userId                String       @db.Uuid
-  status                PayoutStatus @default(CREATED)
-  amountMinor           BigInt
-  currency              String       @db.Char(3)
-  idempotencyKey        String       @unique
-  provider              String?
-  destinationRef        String?
-  providerTransactionId String?      @unique
-  failureCode           String?
-  failureMessage        String?
-  createdAt             DateTime     @default(now()) @db.Timestamptz(3)
-  processedAt           DateTime?    @db.Timestamptz(3)
+  id                     String       @id @default(uuid()) @db.Uuid
+  prizeId                String       @db.Uuid
+  userId                 String       @db.Uuid
+  status                 PayoutStatus @default(CREATED)
+  amountMinor            BigInt
+  currency               String       @db.Char(3)
+  idempotencyKey         String       @unique
+  provider               String?
+  destinationRef         String?
+  providerTransactionId  String?      @unique
+  failureCode            String?
+  failureMessage         String?
+  createdAt              DateTime     @default(now()) @db.Timestamptz(3)
+  processedAt            DateTime?    @db.Timestamptz(3)
+  reconciliationAttempts Int          @default(0)
+  lastReconciledAt       DateTime?    @db.Timestamptz(3)
+  nextReconciliationAt   DateTime?    @db.Timestamptz(3)
 
   prize Prize @relation(fields: [prizeId], references: [id], onDelete: Restrict)
   user  User  @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -653,6 +656,7 @@ model Payout {
   @@unique([prizeId])
   @@index([prizeId, status])
   @@index([userId, createdAt])
+  @@index([status, nextReconciliationAt])
   @@map("payouts")
 }
 

@@ -20,6 +20,9 @@ import {
   ProductionDrawSchedulerService,
 } from '../workers/production-draw-scheduler.service';
 import {
+  ProductionPayoutReconciliationWorkerService,
+} from '../workers/production-payout-reconciliation-worker.service';
+import {
   ProductionPayoutWorkerService,
 } from '../workers/production-payout-worker.service';
 
@@ -39,6 +42,9 @@ export class HealthController {
       ProductionDrawSchedulerService,
       private readonly payoutWorker:
       ProductionPayoutWorkerService,
+
+    private readonly payoutReconciliationWorker:
+      ProductionPayoutReconciliationWorkerService,
   ) {}
 
   @Get()
@@ -136,6 +142,19 @@ export class HealthController {
     if (
       payoutWorker.enabled &&
       !payoutWorker.healthy
+    ) {
+      throw new ServiceUnavailableException(
+        'Service is not ready',
+      );
+    }
+
+    const payoutReconciliationWorker =
+      this.payoutReconciliationWorker
+        .getOperationalStatus();
+
+    if (
+      payoutReconciliationWorker.enabled &&
+      !payoutReconciliationWorker.healthy
     ) {
       throw new ServiceUnavailableException(
         'Service is not ready',

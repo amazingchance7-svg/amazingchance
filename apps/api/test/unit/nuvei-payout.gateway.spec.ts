@@ -1,4 +1,4 @@
-﻿import {
+import {
   ConfigService,
 } from '@nestjs/config';
 
@@ -52,6 +52,22 @@ describe(
         'payout:prize-1',
     };
 
+    const reconciliationInstruction = {
+      payoutId:
+        '00000000-0000-4000-8000-000000000010',
+      prizeId:
+        'prize-1',
+      userId:
+        'user-1',
+      amountMinor:
+        '175',
+      currency:
+        'USD',
+      provider:
+        'NUVEI',
+      providerTransactionId:
+        'nuvei-tx-1',
+    };
     beforeAll(() => {
       global.fetch =
         fetchMock as typeof fetch;
@@ -373,6 +389,339 @@ describe(
           failureCode:
             'NUVEI_APPROVED_WITHOUT_TRANSACTION_ID',
         });
+      },
+    );
+
+    it(
+      'reconciles an approved payout using provider transaction ID without creating a payout',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              200,
+              {
+                transactionDetails: {
+                  transactionStatus:
+                    'APPROVED',
+                  transactionType:
+                    'payout',
+                  merchantTransactionId:
+                    'AC-00000000-0000-4000-8000-000000000010',
+                  transactionId:
+                    'nuvei-tx-1',
+                  processedAmount:
+                    '1.75',
+                  processedCurrency:
+                    'USD',
+                },
+              },
+            ),
+          );
+
+        await expect(
+          gateway.reconcile(
+            reconciliationInstruction,
+          ),
+        ).resolves.toEqual({
+          outcome:
+            PayoutGatewayOutcome
+              .SUCCEEDED,
+          providerTransactionId:
+            'nuvei-tx-1',
+        });
+
+        expect(
+          fetchMock,
+        ).toHaveBeenCalledTimes(
+          1,
+        );
+
+        const [
+          url,
+          options,
+        ] =
+          fetchMock.mock
+            .calls[0];
+
+        expect(url).toBe(
+          'https://api-sandbox.nuvei.com/payment-api/entities/00000000-0000-4000-8000-000000000001/transactions/nuvei-tx-1?source=Nuvei',
+        );
+
+        expect(
+          options.method,
+        ).toBe(
+          'GET',
+        );
+
+        expect(
+          options.body,
+        ).toBeUndefined();
+      },
+    );
+
+    it(
+      'reconciles by merchant transaction ID when provider transaction ID is unknown',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              200,
+              {
+                transactionDetails: {
+                  transactionStatus:
+                    'APPROVED',
+                  transactionType:
+                    'payout',
+                  merchantTransactionId:
+                    'AC-00000000-0000-4000-8000-000000000010',
+                  transactionId:
+                    'nuvei-recovered',
+                  processedAmount:
+                    '1.75',
+                  processedCurrency:
+                    'USD',
+                },
+              },
+            ),
+          );
+
+        await expect(
+          gateway.reconcile({
+            ...reconciliationInstruction,
+            providerTransactionId:
+              null,
+          }),
+        ).resolves.toEqual({
+          outcome:
+            PayoutGatewayOutcome
+              .SUCCEEDED,
+          providerTransactionId:
+            'nuvei-recovered',
+        });
+
+        expect(
+          fetchMock,
+        ).toHaveBeenCalledWith(
+          'https://api-sandbox.nuvei.com/payment-api/entities/00000000-0000-4000-8000-000000000001/transactions/AC-00000000-0000-4000-8000-000000000010?source=Merchant',
+          expect.objectContaining({
+            method:
+              'GET',
+          }),
+        );
+      },
+    );
+
+    it(
+      'maps reconciled declined payout to definitive failure',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              200,
+              {
+                transactionDetails: {
+                  transactionStatus:
+                    'DECLINED',
+                  transactionType:
+                    'payout',
+                  merchantTransactionId:
+                    'AC-00000000-0000-4000-8000-000000000010',
+                  transactionId:
+                    'nuvei-tx-1',
+                  processedAmount:
+                    '1.75',
+                  processedCurrency:
+                    'USD',
+                  errorDescription:
+                    'Payout declined',
+                },
+              },
+            ),
+          );
+
+        await expect(
+          gateway.reconcile(
+            reconciliationInstruction,
+          ),
+        ).resolves.toEqual({
+          outcome:
+            PayoutGatewayOutcome
+              .FAILED,
+          providerTransactionId:
+            'nuvei-tx-1',
+          failureCode:
+            'NUVEI_RECONCILIATION_DECLINED',
+          failureMessage:
+            'Payout declined',
+        });
+      },
+    );
+
+    it(
+      'keeps Nuvei ERROR reconciliation ambiguous',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              200,
+              {
+                transactionDetails: {
+                  transactionStatus:
+                    'ERROR',
+                  transactionType:
+                    'payout',
+                  merchantTransactionId:
+                    'AC-00000000-0000-4000-8000-000000000010',
+                  transactionId:
+                    'nuvei-tx-1',
+                  processedAmount:
+                    '1.75',
+                  processedCurrency:
+                    'USD',
+                  errorDescription:
+                    'Provider processing error',
+                },
+              },
+            ),
+          );
+
+        await expect(
+          gateway.reconcile(
+            reconciliationInstruction,
+          ),
+        ).resolves.toMatchObject({
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          providerTransactionId:
+            'nuvei-tx-1',
+          failureCode:
+            'NUVEI_RECONCILIATION_ERROR',
+        });
+      },
+    );
+
+    it(
+      'rejects reconciliation transaction identity mismatch',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              200,
+              {
+                transactionDetails: {
+                  transactionStatus:
+                    'APPROVED',
+                  transactionType:
+                    'payout',
+                  merchantTransactionId:
+                    'AC-wrong-payout',
+                  transactionId:
+                    'nuvei-tx-1',
+                  processedAmount:
+                    '1.75',
+                  processedCurrency:
+                    'USD',
+                },
+              },
+            ),
+          );
+
+        await expect(
+          gateway.reconcile(
+            reconciliationInstruction,
+          ),
+        ).resolves.toMatchObject({
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_RECONCILIATION_MERCHANT_ID_MISMATCH',
+        });
+      },
+    );
+
+    it(
+      'rejects reconciliation amount mismatch',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              200,
+              {
+                transactionDetails: {
+                  transactionStatus:
+                    'APPROVED',
+                  transactionType:
+                    'payout',
+                  merchantTransactionId:
+                    'AC-00000000-0000-4000-8000-000000000010',
+                  transactionId:
+                    'nuvei-tx-1',
+                  processedAmount:
+                    '2.75',
+                  processedCurrency:
+                    'USD',
+                },
+              },
+            ),
+          );
+
+        await expect(
+          gateway.reconcile(
+            reconciliationInstruction,
+          ),
+        ).resolves.toMatchObject({
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_RECONCILIATION_AMOUNT_MISMATCH',
+        });
+      },
+    );
+
+    it(
+      'keeps missing Nuvei transaction unresolved without executing a payout',
+      async () => {
+        fetchMock
+          .mockResolvedValue(
+            response(
+              404,
+              {},
+            ),
+          );
+
+        await expect(
+          gateway.reconcile({
+            ...reconciliationInstruction,
+            providerTransactionId:
+              null,
+          }),
+        ).resolves.toMatchObject({
+          outcome:
+            PayoutGatewayOutcome
+              .AMBIGUOUS,
+          failureCode:
+            'NUVEI_TRANSACTION_NOT_FOUND',
+        });
+
+        const [
+          ,
+          options,
+        ] =
+          fetchMock.mock
+            .calls[0];
+
+        expect(
+          options.method,
+        ).toBe(
+          'GET',
+        );
+
+        expect(
+          options.body,
+        ).toBeUndefined();
       },
     );
   },
