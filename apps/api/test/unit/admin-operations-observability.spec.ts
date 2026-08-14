@@ -9,9 +9,13 @@ import {
 } from '../../src/authorization/authorization.constants';
 import {
   NotificationOutboxService,
-} from '../../src/notifications/notification-outbox.service';import {
+} from '../../src/notifications/notification-outbox.service';
+import {
   ProductionDrawSchedulerService,
 } from '../../src/workers/production-draw-scheduler.service';
+import {
+  ProductionPayoutWorkerService,
+} from '../../src/workers/production-payout-worker.service';
 
 describe(
   'Admin operations notification observability',
@@ -82,6 +86,26 @@ describe(
             }),
         } as unknown as ProductionDrawSchedulerService;
 
+        const payoutWorker = {
+          getOperationalStatus:
+            jest.fn().mockReturnValue({
+              enabled:
+                true,
+              healthy:
+                true,
+              inFlight:
+                false,
+              lastStartedAt:
+                null,
+              lastCompletedAt:
+                null,
+              consecutiveFailures:
+                0,
+              lastAction:
+                'IDLE',
+            }),
+        } as unknown as ProductionPayoutWorkerService;
+
         const controller =
           new AdminOperationsController(
             {} as never,
@@ -89,6 +113,7 @@ describe(
             {} as never,
             notificationOutbox,
             drawScheduler,
+            payoutWorker,
           );
 
         await expect(
@@ -116,6 +141,74 @@ describe(
             AdminOperationsController
               .prototype
               .notificationWorkerStatus,
+          );
+
+        expect(
+          permissions,
+        ).toEqual([
+          Permissions
+            .OPERATIONS_READ_ADMIN,
+        ]);
+      },
+    );
+
+    it(
+      'returns payout worker operational status',
+      () => {
+        const payoutStatus = {
+          enabled:
+            true,
+          healthy:
+            true,
+          inFlight:
+            false,
+          lastStartedAt:
+            null,
+          lastCompletedAt:
+            null,
+          consecutiveFailures:
+            0,
+          lastAction:
+            'IDLE',
+        };
+
+        const payoutWorker = {
+          getOperationalStatus:
+            jest
+              .fn()
+              .mockReturnValue(
+                payoutStatus,
+              ),
+        } as unknown as ProductionPayoutWorkerService;
+
+        const controller =
+          new AdminOperationsController(
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            payoutWorker,
+          );
+
+        expect(
+          controller
+            .payoutWorkerStatus(),
+        ).toEqual(
+          payoutStatus,
+        );
+      },
+    );
+
+    it(
+      'protects payout worker status with operations read permission',
+      () => {
+        const permissions =
+          Reflect.getMetadata(
+            REQUIRED_PERMISSIONS_KEY,
+            AdminOperationsController
+              .prototype
+              .payoutWorkerStatus,
           );
 
         expect(

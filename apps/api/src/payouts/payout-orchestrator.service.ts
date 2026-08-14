@@ -813,6 +813,113 @@ export class PayoutOrchestratorService {
     );
   }
 
+  markManualReview(
+    payoutId: string,
+    input: {
+      providerTransactionId?:
+        string;
+      failureCode:
+        string;
+      failureMessage:
+        string;
+    },
+  ): Promise<void> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.lockPayout(
+          tx,
+          payoutId,
+        );
+
+        const payout =
+          await tx.payout.findUnique({
+            where: {
+              id:
+                payoutId,
+            },
+          });
+
+        if (!payout) {
+          throw new NotFoundException(
+            'Payout not found',
+          );
+        }
+
+        if (
+          payout.status ===
+          PayoutStatus.MANUAL_REVIEW
+        ) {
+          return;
+        }
+
+        if (
+          payout.status !==
+            PayoutStatus.PROCESSING &&
+          payout.status !==
+            PayoutStatus.PENDING
+        ) {
+          throw new ConflictException(
+            `Payout in ${payout.status} cannot enter manual review`,
+          );
+        }
+
+        const providerId =
+          input
+            .providerTransactionId
+            ?.trim() ||
+          null;
+
+        if (providerId) {
+          this.assertProviderTransactionMatch(
+            payout.providerTransactionId,
+            providerId,
+          );
+        }
+
+        const failureCode =
+          input.failureCode.trim();
+
+        const failureMessage =
+          input.failureMessage.trim();
+
+        if (!failureCode) {
+          throw new ConflictException(
+            'Manual review failure code is required',
+          );
+        }
+
+        if (!failureMessage) {
+          throw new ConflictException(
+            'Manual review failure message is required',
+          );
+        }
+
+        await tx.payout.update({
+          where: {
+            id:
+              payout.id,
+          },
+          data: {
+            status:
+              PayoutStatus.MANUAL_REVIEW,
+            providerTransactionId:
+              providerId ??
+              payout.providerTransactionId,
+            failureCode,
+            failureMessage,
+            processedAt:
+              new Date(),
+          },
+        });
+      },
+      {
+        isolationLevel:
+          Prisma
+            .TransactionIsolationLevel
+            .Serializable,
+      },
+    );
+  }
   private async lockPrize(
     tx:
       Prisma.TransactionClient,
