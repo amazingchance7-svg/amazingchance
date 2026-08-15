@@ -137,6 +137,32 @@ describe(
       await prisma.$disconnect();
     });
 
+    async function claimPreparedPayout(
+      payoutId:
+        string,
+    ): Promise<void> {
+      const claimed =
+        await prisma.payout
+          .updateMany({
+            where: {
+              id:
+                payoutId,
+              status:
+                PayoutStatus.CREATED,
+            },
+            data: {
+              status:
+                PayoutStatus.PROCESSING,
+              processedAt:
+                new Date(),
+            },
+          });
+
+      expect(
+        claimed.count,
+      ).toBe(1);
+    }
+
     async function createApprovedPrize() {
       const user =
         await prisma.user.create({
@@ -599,6 +625,10 @@ describe(
               'opaque-destination-token',
           });
 
+        await claimPreparedPayout(
+          prepared.payoutId,
+        );
+
         await payouts.beginExecution(
           prepared.payoutId,
         );
@@ -731,6 +761,10 @@ describe(
             destinationRef:
               'opaque-destination-token',
           });
+
+        await claimPreparedPayout(
+          prepared.payoutId,
+        );
 
         await payouts.beginExecution(
           prepared.payoutId,
@@ -880,6 +914,10 @@ describe(
               'opaque-destination-token',
           });
 
+        await claimPreparedPayout(
+          prepared.payoutId,
+        );
+
         await payouts.beginExecution(
           prepared.payoutId,
         );
@@ -943,6 +981,10 @@ describe(
             destinationRef:
               'opaque-destination-token',
           });
+
+        await claimPreparedPayout(
+          prepared.payoutId,
+        );
 
         await payouts.beginExecution(
           prepared.payoutId,
