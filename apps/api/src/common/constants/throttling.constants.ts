@@ -31,4 +31,8 @@ export const THROTTLING_POLICIES = {
     limit: 5,
     ttl: 300_000,
   },
+  stripeWebhook: {
+    limit: 120,
+    ttl: 60_000,
+  },
 } as const;

@@ -3,6 +3,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import {
   DocumentBuilder,
   SwaggerModule,
@@ -19,6 +20,9 @@ import {
   API_DEFAULT_PORT,
   API_DEFAULT_WEB_ORIGIN,
 } from './common/constants/api.constants';
+import {
+  API_REQUEST_BODY_LIMIT,
+} from './common/constants/request-body.constants';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
@@ -28,10 +32,18 @@ import {
 } from './config/security-headers.config';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(
+  const app = await NestFactory.create<NestExpressApplication>(
     AppModule,
     {
       rawBody: true,
+    },
+  );
+
+  app.useBodyParser(
+    'json',
+    {
+      limit:
+        API_REQUEST_BODY_LIMIT,
     },
   );
 

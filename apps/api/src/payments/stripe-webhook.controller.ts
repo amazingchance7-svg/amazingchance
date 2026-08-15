@@ -13,18 +13,22 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import type {
   Request,
 } from 'express';
 
+import { THROTTLING_POLICIES } from '../common/constants/throttling.constants';
 import { StripeWebhookService } from './stripe-webhook.service';
 
 @ApiTags('payments')
 @Controller(
   'payments/webhooks/stripe',
 )
-@SkipThrottle()
+@Throttle({
+  default:
+    THROTTLING_POLICIES.stripeWebhook,
+})
 export class StripeWebhookController {
   constructor(
     private readonly service:
