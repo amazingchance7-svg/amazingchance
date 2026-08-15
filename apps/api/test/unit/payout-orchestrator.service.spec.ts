@@ -180,7 +180,7 @@ describe(
     );
 
     it(
-      'moves a prepared payout into processing before provider execution',
+      'returns an execution instruction for an already claimed processing payout',
       async () => {
         payoutFindUnique
           .mockResolvedValue({
@@ -201,18 +201,12 @@ describe(
             idempotencyKey:
               'payout:prize-id',
             status:
-              PayoutStatus.CREATED,
+              PayoutStatus.PROCESSING,
             prize: {
               status:
                 PrizeStatus
                   .PAYOUT_PENDING,
             },
-          });
-
-        payoutUpdateMany
-          .mockResolvedValue({
-            count:
-              1,
           });
 
         await expect(
@@ -227,7 +221,6 @@ describe(
         });
       },
     );
-
     it(
       'finalizes provider success with balanced sealed ledger settlement',
       async () => {
@@ -612,6 +605,88 @@ describe(
                 'Nuvei confirmed payout was declined',
             }),
         });
+      },
+    );
+
+    it(
+      'rejects execution restart from PENDING',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            id:
+              'payout-id',
+            prizeId:
+              'prize-id',
+            userId:
+              'user-id',
+            amountMinor:
+              175n,
+            currency:
+              'USD',
+            provider:
+              'NUVEI',
+            destinationRef:
+              'destination-ref',
+            idempotencyKey:
+              'payout:prize-id',
+            status:
+              PayoutStatus.PENDING,
+            prize: {
+              status:
+                PrizeStatus.PAYOUT_PENDING,
+            },
+          });
+
+        await expect(
+          service.beginExecution(
+            'payout-id',
+          ),
+        ).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+
+        expect(
+          payoutUpdateMany,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it(
+      'rejects execution restart from SUCCEEDED',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            id:
+              'payout-id',
+            prizeId:
+              'prize-id',
+            userId:
+              'user-id',
+            amountMinor:
+              175n,
+            currency:
+              'USD',
+            provider:
+              'NUVEI',
+            destinationRef:
+              'destination-ref',
+            idempotencyKey:
+              'payout:prize-id',
+            status:
+              PayoutStatus.SUCCEEDED,
+            prize: {
+              status:
+                PrizeStatus.PAID,
+            },
+          });
+
+        await expect(
+          service.beginExecution(
+            'payout-id',
+          ),
+        ).rejects.toBeInstanceOf(
+          ConflictException,
+        );
       },
     );
   },

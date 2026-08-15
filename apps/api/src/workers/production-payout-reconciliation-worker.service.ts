@@ -35,12 +35,21 @@ type ClaimedReconciliationRow = {
   id: string;
 };
 
+type ClaimedReconciliation = {
+  id: string;
+  attempt: number;
+};
+
+const MAX_RECONCILIATION_ATTEMPTS =
+  6;
+
 export type PayoutReconciliationWorkerAction =
   | 'IDLE'
   | 'RECONCILED_SUCCEEDED'
   | 'RECONCILED_FAILED'
   | 'RECONCILIATION_PENDING'
   | 'RECONCILIATION_AMBIGUOUS'
+  | 'RECONCILIATION_EXHAUSTED'
   | 'RECONCILIATION_GATEWAY_MISSING';
 
 export type PayoutReconciliationWorkerResult = {
@@ -191,12 +200,12 @@ export class ProductionPayoutReconciliationWorkerService
       Date =
         new Date(),
   ): Promise<PayoutReconciliationWorkerResult> {
-    const payoutId =
+    const claimed =
       await this.claimNext(
         now,
       );
 
-    if (!payoutId) {
+    if (!claimed) {
       return {
         processed:
           false,
@@ -206,6 +215,9 @@ export class ProductionPayoutReconciliationWorkerService
           null,
       };
     }
+
+    const payoutId =
+      claimed.id;
 
     const instruction =
       await this.orchestrator
@@ -251,7 +263,10 @@ export class ProductionPayoutReconciliationWorkerService
         processed:
           true,
         action:
-          'RECONCILIATION_AMBIGUOUS',
+          claimed.attempt >=
+          MAX_RECONCILIATION_ATTEMPTS
+            ? 'RECONCILIATION_EXHAUSTED'
+            : 'RECONCILIATION_AMBIGUOUS',
         payoutId,
       };
     }
@@ -299,7 +314,10 @@ export class ProductionPayoutReconciliationWorkerService
           processed:
             true,
           action:
-            'RECONCILIATION_PENDING',
+            claimed.attempt >=
+            MAX_RECONCILIATION_ATTEMPTS
+              ? 'RECONCILIATION_EXHAUSTED'
+              : 'RECONCILIATION_PENDING',
           payoutId,
         };
 
@@ -308,7 +326,10 @@ export class ProductionPayoutReconciliationWorkerService
           processed:
             true,
           action:
-            'RECONCILIATION_AMBIGUOUS',
+            claimed.attempt >=
+            MAX_RECONCILIATION_ATTEMPTS
+              ? 'RECONCILIATION_EXHAUSTED'
+              : 'RECONCILIATION_AMBIGUOUS',
           payoutId,
         };
     }
@@ -317,7 +338,7 @@ export class ProductionPayoutReconciliationWorkerService
   private async claimNext(
     now:
       Date,
-  ): Promise<string | null> {
+  ): Promise<ClaimedReconciliation | null> {
     return this.prisma.$transaction(
       async (tx) => {
         const rows =
@@ -366,6 +387,13 @@ export class ProductionPayoutReconciliationWorkerService
           return null;
         }
 
+        if (
+          payout.reconciliationAttempts >=
+          MAX_RECONCILIATION_ATTEMPTS
+        ) {
+          return null;
+        }
+
         const attempts =
           payout
             .reconciliationAttempts +
@@ -382,16 +410,24 @@ export class ProductionPayoutReconciliationWorkerService
             lastReconciledAt:
               now,
             nextReconciliationAt:
-              new Date(
-                now.getTime() +
-                  this.backoffMs(
-                    attempts,
+              attempts >=
+              MAX_RECONCILIATION_ATTEMPTS
+                ? null
+                : new Date(
+                    now.getTime() +
+                      this.backoffMs(
+                        attempts,
+                      ),
                   ),
-              ),
           },
         });
 
-        return row.id;
+        return {
+          id:
+            row.id,
+          attempt:
+            attempts,
+        };
       },
       {
         isolationLevel:
@@ -429,9 +465,14 @@ export class ProductionPayoutReconciliationWorkerService
     return (
       this.config
         .get<string>(
+          'NODE_ENV',
+        ) ===
+        'production' &&
+      this.config
+        .get<string>(
           'PAYOUT_WORKER_ENABLED',
         ) ===
-      'true'
+        'true'
     );
   }
 
