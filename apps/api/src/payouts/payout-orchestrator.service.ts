@@ -300,57 +300,12 @@ export class PayoutOrchestratorService {
         }
 
         if (
-          payout.status ===
-          PayoutStatus.SUCCEEDED
-        ) {
-          return this.serializeExecution(
-            payout,
-          );
-        }
-
-        if (
           payout.status !==
-            PayoutStatus.CREATED &&
-          payout.status !==
-            PayoutStatus.PENDING &&
-          payout.status !==
-            PayoutStatus.PROCESSING
+          PayoutStatus.PROCESSING
         ) {
           throw new ConflictException(
             `Payout in ${payout.status} cannot be executed automatically`,
           );
-        }
-
-        if (
-          payout.status !==
-          PayoutStatus.PROCESSING
-        ) {
-          const updated =
-            await tx.payout.updateMany({
-              where: {
-                id:
-                  payout.id,
-                status: {
-                  in: [
-                    PayoutStatus.CREATED,
-                    PayoutStatus.PENDING,
-                  ],
-                },
-              },
-              data: {
-                status:
-                  PayoutStatus.PROCESSING,
-              },
-            });
-
-          if (
-            updated.count !==
-            1
-          ) {
-            throw new ConflictException(
-              'Payout state changed while execution was starting',
-            );
-          }
         }
 
         return this.serializeExecution(

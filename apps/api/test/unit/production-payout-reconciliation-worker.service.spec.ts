@@ -87,7 +87,10 @@ describe(
             key ===
             'PAYOUT_WORKER_ENABLED'
               ? 'true'
-              : undefined,
+              : key ===
+                  'NODE_ENV'
+                ? 'production'
+                : undefined,
         ),
     } as unknown as ConfigService;
 
@@ -287,6 +290,103 @@ describe(
     );
 
     it(
+      'exhausts automatic reconciliation after the sixth unresolved attempt',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            reconciliationAttempts:
+              5,
+          });
+
+        reconcile
+          .mockResolvedValue({
+            outcome:
+              PayoutGatewayOutcome
+                .AMBIGUOUS,
+            failureCode:
+              'LOOKUP_UNKNOWN',
+            failureMessage:
+              'Unknown provider state',
+          });
+
+        const now =
+          new Date(
+            '2026-08-14T12:00:00.000Z',
+          );
+
+        await expect(
+          service.processNext(
+            now,
+          ),
+        ).resolves.toEqual({
+          processed:
+            true,
+          action:
+            'RECONCILIATION_EXHAUSTED',
+          payoutId:
+            'payout-1',
+        });
+
+        expect(
+          payoutUpdate,
+        ).toHaveBeenCalledWith({
+          where: {
+            id:
+              'payout-1',
+          },
+          data: {
+            reconciliationAttempts:
+              6,
+            lastReconciledAt:
+              now,
+            nextReconciliationAt:
+              null,
+          },
+        });
+
+        expect(
+          reconcile,
+        ).toHaveBeenCalledTimes(
+          1,
+        );
+      },
+    );
+
+    it(
+      'does not reconcile a payout after automatic attempts are exhausted',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            reconciliationAttempts:
+              6,
+          });
+
+        await expect(
+          service.processNext(),
+        ).resolves.toEqual({
+          processed:
+            false,
+          action:
+            'IDLE',
+          payoutId:
+            null,
+        });
+
+        expect(
+          payoutUpdate,
+        ).not.toHaveBeenCalled();
+
+        expect(
+          prepareReconciliation,
+        ).not.toHaveBeenCalled();
+
+        expect(
+          reconcile,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it(
       'finalizes reconciled provider success without executing a payout',
       async () => {
         reconcile
@@ -481,6 +581,48 @@ describe(
     );
 
     it(
+      'exhausts automatic reconciliation when the sixth lookup throws',
+      async () => {
+        payoutFindUnique
+          .mockResolvedValue({
+            reconciliationAttempts:
+              5,
+          });
+
+        reconcile
+          .mockRejectedValue(
+            new Error(
+              'network timeout',
+            ),
+          );
+
+        await expect(
+          service.processNext(),
+        ).resolves.toEqual({
+          processed:
+            true,
+          action:
+            'RECONCILIATION_EXHAUSTED',
+          payoutId:
+            'payout-1',
+        });
+
+        expect(
+          reconcile,
+        ).toHaveBeenCalledTimes(
+          1,
+        );
+
+        expect(
+          finalizeReconciledSucceeded,
+        ).not.toHaveBeenCalled();
+
+        expect(
+          markReconciledFailed,
+        ).not.toHaveBeenCalled();
+      },
+    );
+    it(
       'fails closed when payout provider gateway is unavailable',
       async () => {
         getGateway
@@ -510,6 +652,66 @@ describe(
         expect(
           markReconciledFailed,
         ).not.toHaveBeenCalled();
+      },
+    );
+
+    it(
+      'does not start automatic reconciliation outside production',
+      () => {
+        const developmentConfig = {
+          get:
+            jest.fn(
+              (
+                key:
+                  string,
+              ) =>
+                key ===
+                'PAYOUT_WORKER_ENABLED'
+                  ? 'true'
+                  : key ===
+                      'NODE_ENV'
+                    ? 'development'
+                    : undefined,
+            ),
+        } as unknown as ConfigService;
+
+        const developmentService =
+          new ProductionPayoutReconciliationWorkerService(
+            prisma as never,
+            developmentConfig,
+            orchestrator as never,
+            registry as never,
+          );
+
+        developmentService
+          .onModuleInit();
+
+        expect(
+          queryRaw,
+        ).not.toHaveBeenCalled();
+
+        expect(
+          prepareReconciliation,
+        ).not.toHaveBeenCalled();
+
+        expect(
+          reconcile,
+        ).not.toHaveBeenCalled();
+
+        expect(
+          developmentService
+            .getOperationalStatus(),
+        ).toMatchObject({
+          enabled:
+            false,
+          healthy:
+            true,
+          inFlight:
+            false,
+        });
+
+        developmentService
+          .onModuleDestroy();
       },
     );
 
