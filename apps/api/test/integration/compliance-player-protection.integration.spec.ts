@@ -2,6 +2,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import {
+  PrismaClient,
   DrawStatus,
   DrawType,
   PlayerProtectionStatus,
@@ -24,12 +25,16 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+} from './database-role.helper';
 
 describe(
   'Compliance player protection integration',
   () => {
     let prisma:
       PrismaService;
+    let fixturePrisma: PrismaClient;
     let protection:
       PlayerProtectionService;
     let purchases:
@@ -38,6 +43,7 @@ describe(
     beforeAll(async () => {
       prisma =
         await createTestPrisma();
+      fixturePrisma = await createTestAdminPrisma();
 
       protection =
         new PlayerProtectionService(
@@ -58,7 +64,10 @@ describe(
     });
 
     afterAll(async () => {
-      await prisma.$disconnect();
+      await Promise.all([
+        prisma.$disconnect(),
+        fixturePrisma.$disconnect(),
+      ]);
     });
 
     async function createEligibleScenario(
@@ -80,7 +89,7 @@ describe(
         'UA';
 
       const user =
-        await prisma.user.create({
+        await fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@example.com`,
@@ -93,7 +102,7 @@ describe(
           },
         });
 
-      await prisma
+      await fixturePrisma
         .playerComplianceProfile
         .create({
           data: {
@@ -114,7 +123,7 @@ describe(
           },
         });
 
-      await prisma
+      await fixturePrisma
         .jurisdictionPolicy
         .create({
           data: {
@@ -139,7 +148,7 @@ describe(
         });
 
       const draw =
-        await prisma.lotteryDraw.create({
+        await fixturePrisma.lotteryDraw.create({
           data: {
             publicId:
               `W-${randomUUID()}`,
@@ -214,7 +223,7 @@ describe(
       'blocks purchase creation when a compliance profile is missing',
       async () => {
         const user =
-          await prisma.user.create({
+          await fixturePrisma.user.create({
             data: {
               email:
                 `${randomUUID()}@example.com`,
@@ -228,7 +237,7 @@ describe(
           });
 
         const draw =
-          await prisma.lotteryDraw.create({
+          await fixturePrisma.lotteryDraw.create({
             data: {
               publicId:
                 `W-${randomUUID()}`,
@@ -431,7 +440,7 @@ describe(
             .findFirstOrThrow();
 
         await expect(
-          prisma.jurisdictionPolicy
+          fixturePrisma.jurisdictionPolicy
             .update({
               where: {
                 id:
@@ -455,7 +464,7 @@ describe(
             );
 
         await expect(
-          prisma.selfExclusion
+          fixturePrisma.selfExclusion
             .update({
               where: {
                 id:
@@ -469,7 +478,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.selfExclusion
+          fixturePrisma.selfExclusion
             .delete({
               where: {
                 id:
@@ -497,7 +506,7 @@ describe(
             });
 
         await expect(
-          prisma.playerComplianceProfile
+          fixturePrisma.playerComplianceProfile
             .update({
               where: {
                 id:
@@ -511,7 +520,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.playerComplianceProfile
+          fixturePrisma.playerComplianceProfile
             .delete({
               where: {
                 id:

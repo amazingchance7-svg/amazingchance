@@ -19,7 +19,7 @@ import type Stripe from 'stripe';
 import { AuditActions } from '../audit/audit-events.constants';
 import { createCorrelationId } from '../common/utils/identifier.util';
 import { LedgerService } from '../ledger/ledger.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PaymentPrismaService } from '../prisma/prisma.service';
 import { StripeClient } from './stripe.client';
 
 const STRIPE_PROVIDER = 'STRIPE';
@@ -57,7 +57,7 @@ export type StripeRefundCompletionResult = {
 @Injectable()
 export class StripeRefundService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PaymentPrismaService,
     private readonly ledger: LedgerService,
     private readonly stripeClient: StripeClient,
   ) {}

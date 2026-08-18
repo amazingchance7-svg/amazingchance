@@ -23,7 +23,7 @@ import {
   type PayoutExecutionInstruction,
 } from '../payouts/payout-orchestrator.service';
 import {
-  PrismaService,
+  PayoutPrismaService,
 } from '../prisma/prisma.service';
 
 const POLL_INTERVAL_MS =
@@ -101,7 +101,7 @@ export class ProductionPayoutWorkerService
 
   constructor(
     private readonly prisma:
-      PrismaService,
+      PayoutPrismaService,
     private readonly config:
       ConfigService,
     private readonly orchestrator:

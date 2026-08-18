@@ -11,7 +11,7 @@ import {
   Prisma,
 } from '@prisma/client';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 import {
   effectiveSalesCutoffAt,
   ticketSalesBlockReason,
@@ -56,7 +56,7 @@ export class WeeklyDrawSalesService
 
   constructor(
     private readonly prisma:
-      PrismaService,
+      DrawPrismaService,
   ) {}
 
   onModuleInit(): void {

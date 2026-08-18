@@ -12,7 +12,7 @@ import {
 } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 
 const CANONICAL_FORMAT = 'AMAZING_CHANCE_TICKET_SNAPSHOT_V1';
 
@@ -34,7 +34,7 @@ export class SnapshotBuilderService {
   private readonly ownerSecret: string;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: DrawPrismaService,
     config: ConfigService,
   ) {
     this.ownerSecret = config.getOrThrow<string>(

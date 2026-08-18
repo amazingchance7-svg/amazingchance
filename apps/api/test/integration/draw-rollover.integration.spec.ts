@@ -1,6 +1,7 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
 } from '@prisma/client';
 import {
   randomUUID,
@@ -10,24 +11,35 @@ import {
   WeeklyDrawSalesService,
 } from '../../src/lottery-draws/weekly-draw-sales.service';
 import {
+  DrawPrismaService,
   PrismaService,
 } from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 
 describe('SEC-002 weekly draw rollover integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
   let service:
     WeeklyDrawSalesService;
 
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    drawPrisma =
+      await createTestDrawPrisma();
     service =
       new WeeklyDrawSalesService(
-        prisma,
+        drawPrisma,
       );
   });
 
@@ -38,7 +50,11 @@ describe('SEC-002 weekly draw rollover integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createWeeklyDraw(
@@ -50,7 +66,7 @@ describe('SEC-002 weekly draw rollover integration', () => {
       sequenceNumber?: number;
     },
   ) {
-    return prisma.lotteryDraw.create({
+    return fixturePrisma.lotteryDraw.create({
       data: {
         publicId:
           `W-SEC002-${randomUUID()}`,

@@ -8,6 +8,7 @@ import {
   LedgerSide,
   LedgerTransactionType,
   Prisma,
+  PrismaClient,
   PrizeEligibilityCheckStatus,
   PrizeEligibilityCheckType,
   PrizeStatus,
@@ -30,6 +31,10 @@ import {
   PrizeClaimsService,
 } from '../../src/prize-claims/prize-claims.service';
 import {
+  ClaimPrismaService,
+  DrawPrismaService,
+  PaymentPrismaService,
+  PayoutPrismaService,
   PrismaService,
 } from '../../src/prisma/prisma.service';
 import {
@@ -55,6 +60,13 @@ import {
   createTestPrisma,
 } from './database.helper';
 import {
+  createTestAdminPrisma,
+  createTestClaimPrisma,
+  createTestDrawPrisma,
+  createTestPaymentPrisma,
+  createTestPayoutPrisma,
+} from './database-role.helper';
+import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
 
@@ -66,7 +78,21 @@ describe(
   () => {
     let prisma:
       PrismaService;
-    let ledger:
+    let fixturePrisma:
+      PrismaClient;
+    let paymentPrisma:
+      PaymentPrismaService;
+    let drawPrisma:
+      DrawPrismaService;
+    let claimPrisma:
+      ClaimPrismaService;
+    let payoutPrisma:
+      PayoutPrismaService;
+    let paymentLedger:
+      LedgerService;
+    let drawLedger:
+      LedgerService;
+    let payoutLedger:
       LedgerService;
     let claims:
       PrizeClaimsService;
@@ -82,26 +108,46 @@ describe(
     beforeAll(async () => {
       prisma =
         await createTestPrisma();
+      fixturePrisma =
+        await createTestAdminPrisma();
+      paymentPrisma =
+        await createTestPaymentPrisma();
+      drawPrisma =
+        await createTestDrawPrisma();
+      claimPrisma =
+        await createTestClaimPrisma();
+      payoutPrisma =
+        await createTestPayoutPrisma();
 
-      ledger =
+      paymentLedger =
         new LedgerService(
-          prisma,
+          paymentPrisma,
+        );
+
+      drawLedger =
+        new LedgerService(
+          drawPrisma,
+        );
+
+      payoutLedger =
+        new LedgerService(
+          payoutPrisma,
         );
 
       claims =
         new PrizeClaimsService(
-          prisma,
+          claimPrisma,
         );
 
       payouts =
         new PayoutOrchestratorService(
-          prisma,
-          ledger,
+          payoutPrisma,
+          payoutLedger,
         );
 
       builder =
         new SnapshotBuilderService(
-          prisma,
+          drawPrisma,
           new ConfigService({
             SNAPSHOT_OWNER_SECRET:
               OWNER_SECRET,
@@ -110,19 +156,19 @@ describe(
 
       finalizer =
         new SnapshotFinalizerService(
-          prisma,
+          drawPrisma,
           new SnapshotCryptographyService(),
         );
 
       winnerSelection =
         new WinnerSelectionService(
-          prisma,
-          ledger,
+          drawPrisma,
+          drawLedger,
           new PrizeDistributionService(
-            prisma,
+            drawPrisma,
           ),
           new PrizePoolService(
-            prisma,
+            drawPrisma,
           ),
         );
     });
@@ -134,7 +180,14 @@ describe(
     });
 
     afterAll(async () => {
-      await prisma.$disconnect();
+      await Promise.all([
+        prisma.$disconnect(),
+        fixturePrisma.$disconnect(),
+        paymentPrisma.$disconnect(),
+        drawPrisma.$disconnect(),
+        claimPrisma.$disconnect(),
+        payoutPrisma.$disconnect(),
+      ]);
     });
 
     async function claimPreparedPayout(
@@ -142,7 +195,7 @@ describe(
         string,
     ): Promise<void> {
       const claimed =
-        await prisma.payout
+        await payoutPrisma.payout
           .updateMany({
             where: {
               id:
@@ -165,7 +218,7 @@ describe(
 
     async function createApprovedPrize() {
       const user =
-        await prisma.user.create({
+        await fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@example.com`,
@@ -179,7 +232,7 @@ describe(
         });
 
       const reviewer =
-        await prisma.user.create({
+        await fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@example.com`,
@@ -193,7 +246,7 @@ describe(
         });
 
       const draw =
-        await prisma.lotteryDraw.create({
+        await fixturePrisma.lotteryDraw.create({
           data: {
             publicId:
               `W-2026-${randomUUID()}`,
@@ -221,7 +274,7 @@ describe(
         });
 
       const purchase =
-        await prisma.purchase.create({
+        await fixturePrisma.purchase.create({
           data: {
             publicId:
               `PUR-${randomUUID()}`,
@@ -248,7 +301,7 @@ describe(
           },
         });
 
-      await ledger.append({
+      await paymentLedger.append({
         type:
           LedgerTransactionType
             .PAYMENT_ALLOCATION,
@@ -310,7 +363,7 @@ describe(
         index += 1
       ) {
         await ensureTestTicketAllocation(
-          prisma,
+          fixturePrisma,
           {
             purchaseId:
               purchase.id,
@@ -321,7 +374,7 @@ describe(
           },
         );
 
-        await prisma.ticket.create({
+        await fixturePrisma.ticket.create({
           data: {
             publicId:
               `TKT-${index}-${randomUUID()}`,
@@ -337,7 +390,7 @@ describe(
         });
       }
 
-      await prisma.lotteryDraw.update({
+      await fixturePrisma.lotteryDraw.update({
         where: {
           id:
             draw.id,
@@ -356,7 +409,7 @@ describe(
         draw.id,
       );
 
-      await prisma.randomnessEvidence
+      await fixturePrisma.randomnessEvidence
         .create({
           data: {
             drawId:
@@ -413,7 +466,7 @@ describe(
           },
         });
 
-      await prisma.lotteryDraw.update({
+      await fixturePrisma.lotteryDraw.update({
         where: {
           id:
             draw.id,
@@ -573,7 +626,7 @@ describe(
           });
 
         await expect(
-          prisma.payout.update({
+          fixturePrisma.payout.update({
             where: {
               id:
                 prepared.payoutId,
@@ -586,7 +639,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.payout.update({
+          fixturePrisma.payout.update({
             where: {
               id:
                 prepared.payoutId,
@@ -599,7 +652,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.payout.delete({
+          fixturePrisma.payout.delete({
             where: {
               id:
                 prepared.payoutId,
@@ -773,7 +826,7 @@ describe(
         const spy =
           jest
             .spyOn(
-              ledger,
+              payoutLedger,
               'appendInTransaction',
             )
             .mockRejectedValueOnce(
@@ -865,7 +918,7 @@ describe(
           });
 
         await expect(
-          prisma.payout.update({
+          fixturePrisma.payout.update({
             where: {
               id:
                 prepared.payoutId,
@@ -882,7 +935,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.prize.update({
+          fixturePrisma.prize.update({
             where: {
               id:
                 scenario.prize.id,

@@ -11,7 +11,7 @@ import {
   PrizeStatus,
 } from '@prisma/client';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { ClaimPrismaService } from '../prisma/prisma.service';
 
 const REQUIRED_CHECKS = [
   PrizeEligibilityCheckType.IDENTITY,
@@ -21,7 +21,7 @@ const REQUIRED_CHECKS = [
 
 @Injectable()
 export class PrizeClaimsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: ClaimPrismaService) {}
 
   submit(input: {
     prizeId: string;

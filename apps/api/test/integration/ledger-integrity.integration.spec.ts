@@ -7,23 +7,28 @@ import { randomUUID } from 'node:crypto';
 
 import { LedgerIntegrityService } from '../../src/ledger/ledger-integrity.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import { PaymentPrismaService, PrismaService } from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('Ledger integrity verification integration', () => {
   let prisma: PrismaService;
+  let paymentPrisma: PaymentPrismaService;
   let ledgerService: LedgerService;
   let integrityService:
     LedgerIntegrityService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
 
     ledgerService =
-      new LedgerService(prisma);
+      new LedgerService(paymentPrisma);
 
     integrityService =
       new LedgerIntegrityService(prisma);
@@ -34,7 +39,10 @@ describe('Ledger integrity verification integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   it('reports a healthy ledger after valid transactions', async () => {

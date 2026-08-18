@@ -1,4 +1,5 @@
 import {
+  PrismaClient,
   AuditActorType,
   PurchaseStatus,
   UserStatus,
@@ -13,14 +14,19 @@ import {
   createTestPrisma,
   executeAdminSql,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+} from './database-role.helper';
 
 describe('SEC-007 immutable privileged audit', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
   let audit: AuditService;
   let controls: AdminPurchaseControlsService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
     audit = new AuditService(prisma);
     controls = new AdminPurchaseControlsService(prisma);
   });
@@ -30,13 +36,16 @@ describe('SEC-007 immutable privileged audit', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+    ]);
   });
 
   async function createPurchase(status: PurchaseStatus) {
     const suffix = crypto.randomUUID();
 
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `sec007-${suffix}@example.com`,
         passwordHash: 'hash',
@@ -44,7 +53,7 @@ describe('SEC-007 immutable privileged audit', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `sec007-draw-${suffix}`,
         type: 'WEEKLY',
@@ -60,7 +69,7 @@ describe('SEC-007 immutable privileged audit', () => {
       },
     });
 
-    return prisma.purchase.create({
+    return fixturePrisma.purchase.create({
       data: {
         publicId: `sec007-purchase-${suffix}`,
         userId: user.id,

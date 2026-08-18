@@ -15,12 +15,30 @@ const runtimeDatabaseUrl =
   process.env.TEST_DATABASE_URL ??
   "postgresql://amazing_chance_runtime_test:amazing_chance_runtime_test@127.0.0.1:55432/amazing_chance_test?schema=public";
 
+const paymentDatabaseUrl =
+  process.env.TEST_PAYMENT_DATABASE_URL ??
+  "postgresql://amazing_chance_payment_test:amazing_chance_payment_test@127.0.0.1:55432/amazing_chance_test?schema=public";
+
+const drawDatabaseUrl =
+  process.env.TEST_DRAW_DATABASE_URL ??
+  "postgresql://amazing_chance_draw_test:amazing_chance_draw_test@127.0.0.1:55432/amazing_chance_test?schema=public";
+
+const claimDatabaseUrl =
+  process.env.TEST_CLAIM_DATABASE_URL ??
+  "postgresql://amazing_chance_claim_test:amazing_chance_claim_test@127.0.0.1:55432/amazing_chance_test?schema=public";
+const payoutDatabaseUrl =
+  process.env.TEST_PAYOUT_DATABASE_URL ??
+  "postgresql://amazing_chance_payout_test:amazing_chance_payout_test@127.0.0.1:55432/amazing_chance_test?schema=public";
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repositoryRoot,
     env: {
       ...process.env,
       DATABASE_URL: options.databaseUrl ?? runtimeDatabaseUrl,
+      PAYMENT_DATABASE_URL: paymentDatabaseUrl,
+      DRAW_DATABASE_URL: drawDatabaseUrl,
+      CLAIM_DATABASE_URL: claimDatabaseUrl,
+      PAYOUT_DATABASE_URL: payoutDatabaseUrl,
       TEST_DATABASE_URL: runtimeDatabaseUrl,
       TEST_ADMIN_DATABASE_URL: adminDatabaseUrl,
       NODE_ENV: "test",
@@ -106,6 +124,68 @@ try {
 
     GRANT amazing_chance_runtime
     TO amazing_chance_runtime_test;
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'amazing_chance_payment_test'
+      ) THEN
+        CREATE ROLE amazing_chance_payment_test
+          LOGIN INHERIT
+          NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS
+          PASSWORD 'amazing_chance_payment_test';
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'amazing_chance_draw_test'
+      ) THEN
+        CREATE ROLE amazing_chance_draw_test
+          LOGIN INHERIT
+          NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS
+          PASSWORD 'amazing_chance_draw_test';
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'amazing_chance_payout_test'
+      ) THEN
+        CREATE ROLE amazing_chance_payout_test
+          LOGIN INHERIT
+          NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS
+          PASSWORD 'amazing_chance_payout_test';
+      END IF;
+    END;
+    $$;
+
+    GRANT amazing_chance_payment
+    TO amazing_chance_payment_test;
+
+    GRANT amazing_chance_draw
+    TO amazing_chance_draw_test;
+
+    GRANT amazing_chance_payout
+    TO amazing_chance_payout_test;
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'amazing_chance_claim_test'
+      ) THEN
+        CREATE ROLE amazing_chance_claim_test
+          LOGIN INHERIT
+          NOSUPERUSER NOCREATEDB NOCREATEROLE
+          NOREPLICATION NOBYPASSRLS
+          PASSWORD 'amazing_chance_claim_test';
+      END IF;
+    END;
+    $$;
+
+    GRANT amazing_chance_claim
+    TO amazing_chance_claim_test;
   `);
 
   runNodeModule(
@@ -114,6 +194,7 @@ try {
       "--config",
       "test/jest.integration.config.cjs",
       "--runInBand",
+      ...process.argv.slice(2),
     ],
     { cwd: apiRoot, databaseUrl: runtimeDatabaseUrl },
   );

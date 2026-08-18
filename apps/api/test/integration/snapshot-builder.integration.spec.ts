@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   SnapshotStatus,
   TicketStatus,
@@ -9,12 +10,19 @@ import {
 } from '@prisma/client';
 import { createHmac, randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -25,12 +33,19 @@ const OWNER_SECRET =
 
 describe('Snapshot builder integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
   let service: SnapshotBuilderService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    drawPrisma =
+      await createTestDrawPrisma();
+
     service = new SnapshotBuilderService(
-      prisma,
+      drawPrisma,
       new ConfigService({
         SNAPSHOT_OWNER_SECRET: OWNER_SECRET,
       }),
@@ -42,11 +57,15 @@ describe('Snapshot builder integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createScenario() {
-    const firstUser = await prisma.user.create({
+    const firstUser = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -55,7 +74,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    const secondUser = await prisma.user.create({
+    const secondUser = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -64,7 +83,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -76,7 +95,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    const firstPurchase = await prisma.purchase.create({
+    const firstPurchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: firstUser.id,
@@ -92,7 +111,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    const secondPurchase = await prisma.purchase.create({
+    const secondPurchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: secondUser.id,
@@ -109,7 +128,7 @@ describe('Snapshot builder integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: secondPurchase.id,
         drawId: draw.id,
@@ -117,7 +136,7 @@ describe('Snapshot builder integration', () => {
       },
     );
 
-    const ticketThree = await prisma.ticket.create({
+    const ticketThree = await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: secondUser.id,
@@ -128,7 +147,7 @@ describe('Snapshot builder integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: firstPurchase.id,
         drawId: draw.id,
@@ -136,7 +155,7 @@ describe('Snapshot builder integration', () => {
       },
     );
 
-    const ticketOne = await prisma.ticket.create({
+    const ticketOne = await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: firstUser.id,
@@ -147,7 +166,7 @@ describe('Snapshot builder integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: firstPurchase.id,
         drawId: draw.id,
@@ -155,7 +174,7 @@ describe('Snapshot builder integration', () => {
       },
     );
 
-    const ticketTwo = await prisma.ticket.create({
+    const ticketTwo = await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: firstUser.id,
@@ -165,7 +184,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: { id: draw.id },
       data: { status: DrawStatus.SALES_CLOSED },
     });
@@ -264,7 +283,7 @@ describe('Snapshot builder integration', () => {
   it('excludes tickets voided by refund', async () => {
     const scenario = await createScenario();
 
-    await prisma.ticket.update({
+    await fixturePrisma.ticket.update({
       where: { id: scenario.ticketTwo.id },
       data: {
         status: TicketStatus.VOIDED_BY_REFUND,
@@ -314,7 +333,7 @@ describe('Snapshot builder integration', () => {
   it('creates different owner references for the same user in different draws', async () => {
     const scenario = await createScenario();
 
-    const secondDraw = await prisma.lotteryDraw.create({
+    const secondDraw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -326,7 +345,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    const secondDrawPurchase = await prisma.purchase.create({
+    const secondDrawPurchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: scenario.firstUser.id,
@@ -343,7 +362,7 @@ describe('Snapshot builder integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: secondDrawPurchase.id,
         drawId: secondDraw.id,
@@ -351,7 +370,7 @@ describe('Snapshot builder integration', () => {
       },
     );
 
-    await prisma.ticket.create({
+    await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: scenario.firstUser.id,
@@ -361,7 +380,7 @@ describe('Snapshot builder integration', () => {
       },
     });
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: { id: secondDraw.id },
       data: { status: DrawStatus.SALES_CLOSED },
     });
@@ -401,7 +420,7 @@ describe('Snapshot builder integration', () => {
   it('rejects a draw whose sales are not closed', async () => {
     const scenario = await createScenario();
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: { id: scenario.draw.id },
       data: { status: DrawStatus.SALES_OPEN },
     });

@@ -5,6 +5,7 @@ import {
   LedgerSide,
   LedgerTransactionType,
   PaymentStatus,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
@@ -14,21 +15,34 @@ import { PlayerProtectionService } from '../../src/compliance/player-protection.
 import { FinancialAllocationService } from '../../src/finance/financial-allocation.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { PaymentOrchestratorService } from '../../src/payments/payment-orchestrator.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { TicketAllocationService } from '../../src/tickets/ticket-allocation.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
   executeAdminSql,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('Verified payment orchestration integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
   let service: PaymentOrchestratorService;
 
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    paymentPrisma =
+      await createTestPaymentPrisma();
     const playerProtection = {
       assertCanPurchaseInTransaction:
         jest.fn().mockResolvedValue({
@@ -40,11 +54,11 @@ describe('Verified payment orchestration integration', () => {
     } as unknown as PlayerProtectionService;
     service =
       new PaymentOrchestratorService(
-        prisma,
-        new LedgerService(prisma),
+        paymentPrisma,
+        new LedgerService(paymentPrisma),
         new TicketAllocationService(),
         new FinancialAllocationService(
-          prisma,
+          paymentPrisma,
         ),
         playerProtection,
       );
@@ -55,7 +69,7 @@ describe('Verified payment orchestration integration', () => {
       prisma,
     );
 
-    await prisma.allocationRule.create({
+    await fixturePrisma.allocationRule.create({
       data: {
         version:
           1,
@@ -74,7 +88,11 @@ describe('Verified payment orchestration integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function scenario(
@@ -93,7 +111,7 @@ describe('Verified payment orchestration integration', () => {
     },
   ) {
     const user =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email:
             `${randomUUID()}@example.com`,
@@ -107,7 +125,7 @@ describe('Verified payment orchestration integration', () => {
       });
 
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-2026-${randomUUID()}`,
@@ -134,7 +152,7 @@ describe('Verified payment orchestration integration', () => {
       });
 
     const purchase =
-      await prisma.purchase.create({
+      await fixturePrisma.purchase.create({
         data: {
           publicId:
             `PUR-${randomUUID()}`,
@@ -160,7 +178,7 @@ describe('Verified payment orchestration integration', () => {
       });
 
     const payment =
-      await prisma.payment.create({
+      await fixturePrisma.payment.create({
         data: {
           purchaseId:
             purchase.id,
@@ -809,7 +827,7 @@ describe('Verified payment orchestration integration', () => {
       });
 
     await expect(
-      prisma.$executeRaw`
+      fixturePrisma.$executeRaw`
         DELETE FROM "tickets"
         WHERE "id" = ${ticket.id}::uuid
       `,

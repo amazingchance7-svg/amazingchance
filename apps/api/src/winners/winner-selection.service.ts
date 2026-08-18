@@ -23,7 +23,7 @@ import {
 import {
   PrizePoolService,
 } from '../prizes/prize-pool.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 import {
   type FinalizeWinnerSelectionResult,
   type SelectedWinner,
@@ -64,7 +64,7 @@ type PrizeEvidence = {
 @Injectable()
 export class WinnerSelectionService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: DrawPrismaService,
     private readonly ledger:
       LedgerService,
     private readonly prizeDistribution:

@@ -1,16 +1,24 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -18,9 +26,13 @@ import {
 
 describe('SEC-001 hard ticket sales cutoff integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
   });
 
   beforeEach(async () => {
@@ -28,7 +40,11 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function createFixture(input: {
@@ -37,7 +53,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
     salesCloseAt?: Date | null;
     scheduledDrawAt: Date;
   }) {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -46,7 +62,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-SEC001-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -60,7 +76,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-SEC001-${randomUUID()}`,
         userId: user.id,
@@ -83,7 +99,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
     fixture: Awaited<ReturnType<typeof createFixture>>,
   ) {
     await ensureTestTicketAllocation(
-      prisma,
+      paymentPrisma,
       {
         purchaseId: fixture.purchase.id,
         drawId: fixture.draw.id,
@@ -91,7 +107,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
       },
     );
 
-    return prisma.ticket.create({
+    return paymentPrisma.ticket.create({
       data: {
         publicId: `TKT-SEC001-${randomUUID()}`,
         userId: fixture.user.id,
@@ -160,7 +176,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
     const scheduledDrawAt = new Date(Date.now() + 60 * 60 * 1000);
 
     await expect(
-      prisma.lotteryDraw.create({
+      fixturePrisma.lotteryDraw.create({
         data: {
           publicId: `W-SEC001-CONSTRAINT-${randomUUID()}`,
           type: DrawType.WEEKLY,
@@ -186,7 +202,7 @@ describe('SEC-001 hard ticket sales cutoff integration', () => {
     });
 
     await expect(
-      prisma.$transaction(async (tx) => {
+      paymentPrisma.$transaction(async (tx) => {
         const [{ transactionStartedAt }] = await tx.$queryRaw<
           { transactionStartedAt: Date }[]
         >`

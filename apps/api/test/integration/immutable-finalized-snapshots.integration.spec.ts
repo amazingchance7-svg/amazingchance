@@ -2,12 +2,16 @@ import { ConfigService } from '@nestjs/config';
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
 import { SnapshotCryptographyService } from '../../src/snapshots/snapshot-cryptography.service';
 import { SnapshotFinalizerService } from '../../src/snapshots/snapshot-finalizer.service';
@@ -15,6 +19,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -25,21 +33,25 @@ const OWNER_SECRET =
 
 describe('Immutable finalized snapshots integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
   let builder: SnapshotBuilderService;
   let finalizer: SnapshotFinalizerService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    drawPrisma = await createTestDrawPrisma();
 
     builder = new SnapshotBuilderService(
-      prisma,
+      drawPrisma,
       new ConfigService({
         SNAPSHOT_OWNER_SECRET: OWNER_SECRET,
       }),
     );
 
     finalizer = new SnapshotFinalizerService(
-      prisma,
+      drawPrisma,
       new SnapshotCryptographyService(),
     );
   });
@@ -49,11 +61,15 @@ describe('Immutable finalized snapshots integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createBuiltSnapshot() {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -62,7 +78,7 @@ describe('Immutable finalized snapshots integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -74,7 +90,7 @@ describe('Immutable finalized snapshots integration', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: user.id,
@@ -91,7 +107,7 @@ describe('Immutable finalized snapshots integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -99,7 +115,7 @@ describe('Immutable finalized snapshots integration', () => {
       },
     );
 
-    const firstTicket = await prisma.ticket.create({
+    const firstTicket = await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: user.id,
@@ -110,7 +126,7 @@ describe('Immutable finalized snapshots integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -118,7 +134,7 @@ describe('Immutable finalized snapshots integration', () => {
       },
     );
 
-    const secondTicket = await prisma.ticket.create({
+    const secondTicket = await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: user.id,
@@ -128,7 +144,7 @@ describe('Immutable finalized snapshots integration', () => {
       },
     });
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: { id: draw.id },
       data: { status: DrawStatus.SALES_CLOSED },
     });
@@ -173,7 +189,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createFinalizedSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      drawPrisma.$executeRaw`
         UPDATE "ticket_snapshots"
         SET "canonicalFormat" = 'CORRUPTED'
         WHERE "id" = ${scenario.built.snapshotId}::uuid
@@ -187,7 +203,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createFinalizedSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      fixturePrisma.$executeRaw`
         DELETE FROM "ticket_snapshots"
         WHERE "id" = ${scenario.built.snapshotId}::uuid
       `,
@@ -200,7 +216,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createFinalizedSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      drawPrisma.$executeRaw`
         INSERT INTO "ticket_snapshot_entries" (
           "id",
           "snapshotId",
@@ -227,7 +243,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createFinalizedSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      fixturePrisma.$executeRaw`
         UPDATE "ticket_snapshot_entries"
         SET "ownerPublicRef" = 'owner-corrupted'
         WHERE "id" = ${scenario.entry.id}::uuid
@@ -241,7 +257,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createFinalizedSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      fixturePrisma.$executeRaw`
         DELETE FROM "ticket_snapshot_entries"
         WHERE "id" = ${scenario.entry.id}::uuid
       `,
@@ -254,7 +270,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createBuiltSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      drawPrisma.$executeRaw`
         UPDATE "ticket_snapshots"
         SET
           "status" = 'FINALIZED'::"SnapshotStatus",
@@ -272,7 +288,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createBuiltSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      drawPrisma.$executeRaw`
         UPDATE "ticket_snapshots"
         SET
           "status" = 'FINALIZED'::"SnapshotStatus",
@@ -290,7 +306,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createBuiltSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      drawPrisma.$executeRaw`
         UPDATE "ticket_snapshots"
         SET
           "status" = 'FINALIZED'::"SnapshotStatus",
@@ -308,7 +324,7 @@ describe('Immutable finalized snapshots integration', () => {
     const scenario = await createBuiltSnapshot();
 
     await expect(
-      prisma.$executeRaw`
+      drawPrisma.$executeRaw`
         UPDATE "ticket_snapshots"
         SET
           "status" = 'FINALIZED'::"SnapshotStatus",

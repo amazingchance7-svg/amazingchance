@@ -3,6 +3,7 @@ import {
   DrawType,
   PaymentAttemptStatus,
   PaymentStatus,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
@@ -12,15 +13,24 @@ import type Stripe from 'stripe';
 import { PlayerProtectionService } from '../../src/compliance/player-protection.service';
 import { StripeClient } from '../../src/payments/stripe.client';
 import { StripePaymentIntentService } from '../../src/payments/stripe-payment-intent.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { PurchasesService } from '../../src/purchases/purchases.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('Stripe PaymentIntent initiation integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
   let purchases: PurchasesService;
   let service: StripePaymentIntentService;
 
@@ -47,6 +57,10 @@ describe('Stripe PaymentIntent initiation integration', () => {
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    paymentPrisma =
+      await createTestPaymentPrisma();
     const playerProtection = {
       assertCanPurchaseInTransaction:
         jest.fn().mockResolvedValue({
@@ -69,7 +83,7 @@ describe('Stripe PaymentIntent initiation integration', () => {
 
     service =
       new StripePaymentIntentService(
-        prisma,
+        paymentPrisma,
         stripeClient,
         playerProtection,
       );
@@ -85,12 +99,16 @@ describe('Stripe PaymentIntent initiation integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function createScenario() {
     const user =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email:
             `${randomUUID()}@example.com`,
@@ -104,7 +122,7 @@ describe('Stripe PaymentIntent initiation integration', () => {
       });
 
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-${randomUUID()}`,
@@ -408,7 +426,7 @@ describe('Stripe PaymentIntent initiation integration', () => {
       await createScenario();
 
     const otherUser =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email:
             `${randomUUID()}@example.com`,
@@ -443,7 +461,7 @@ describe('Stripe PaymentIntent initiation integration', () => {
     const scenario =
       await createScenario();
 
-    await prisma.purchase.update({
+    await fixturePrisma.purchase.update({
       where: {
         id:
           scenario.purchase.id,
@@ -587,7 +605,7 @@ describe('Stripe PaymentIntent initiation integration', () => {
       scenario.purchase.id,
     );
 
-    await prisma.payment.updateMany({
+    await fixturePrisma.payment.updateMany({
       where: {
         purchaseId:
           scenario.purchase.id,

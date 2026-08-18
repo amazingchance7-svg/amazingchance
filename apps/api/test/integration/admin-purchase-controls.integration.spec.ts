@@ -1,4 +1,5 @@
 import {
+  PrismaClient,
   PaymentStatus,
   PurchaseStatus,
   UserStatus,
@@ -11,13 +12,18 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+} from './database-role.helper';
 
 describe('Admin purchase operational controls', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
   let service: AdminPurchaseControlsService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
     service = new AdminPurchaseControlsService(prisma);
   });
 
@@ -26,11 +32,14 @@ describe('Admin purchase operational controls', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+    ]);
   });
 
   async function fixture(status: PurchaseStatus) {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `controls-${status.toLowerCase()}@example.com`,
         passwordHash: 'test-password-hash',
@@ -38,7 +47,7 @@ describe('Admin purchase operational controls', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `draw-controls-${status.toLowerCase()}`,
         type: 'WEEKLY',
@@ -52,7 +61,7 @@ describe('Admin purchase operational controls', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `purchase-controls-${status.toLowerCase()}`,
         userId: user.id,
@@ -171,7 +180,7 @@ describe('Admin purchase operational controls', () => {
       null,
     );
 
-    await prisma.payment.create({
+    await fixturePrisma.payment.create({
       data: {
         purchaseId: purchase.id,
         provider: 'STRIPE',

@@ -1,6 +1,7 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   SnapshotStatus,
   TicketStatus,
@@ -8,12 +9,19 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { TicketsQueryService } from '../../src/tickets/tickets-query.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -21,10 +29,14 @@ import {
 
 describe('Issued tickets query integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
   let service: TicketsQueryService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
     service = new TicketsQueryService(prisma);
   });
 
@@ -33,11 +45,15 @@ describe('Issued tickets query integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function createUser() {
-    return prisma.user.create({
+    return fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -48,7 +64,7 @@ describe('Issued tickets query integration', () => {
   }
 
   async function createDraw() {
-    return prisma.lotteryDraw.create({
+    return fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `DRAW-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -65,7 +81,7 @@ describe('Issued tickets query integration', () => {
   }
 
   async function createPurchase(userId: string, drawId: string) {
-    return prisma.purchase.create({
+    return fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId,
@@ -89,7 +105,7 @@ describe('Issued tickets query integration', () => {
     numberInDraw: bigint;
   }) {
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: input.purchaseId,
         drawId: input.drawId,
@@ -97,7 +113,7 @@ describe('Issued tickets query integration', () => {
       },
     );
 
-    return prisma.ticket.create({
+    return paymentPrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: input.userId,
@@ -142,7 +158,7 @@ describe('Issued tickets query integration', () => {
     const draw = await createDraw();
     const purchase = await createPurchase(user.id, draw.id);
 
-    await prisma.ticketAllocation.create({
+    await fixturePrisma.ticketAllocation.create({
       data: {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -206,7 +222,7 @@ describe('Issued tickets query integration', () => {
 
     const voidedAt = new Date();
 
-    await prisma.ticket.update({
+    await paymentPrisma.ticket.update({
       where: {
         id: ticket.id,
       },
@@ -238,7 +254,7 @@ describe('Issued tickets query integration', () => {
 
     const builtAt = new Date();
 
-    const snapshot = await prisma.ticketSnapshot.create({
+    const snapshot = await fixturePrisma.ticketSnapshot.create({
       data: {
         drawId: draw.id,
         status: SnapshotStatus.BUILDING,
@@ -248,7 +264,7 @@ describe('Issued tickets query integration', () => {
       },
     });
 
-    await prisma.ticketSnapshotEntry.create({
+    await fixturePrisma.ticketSnapshotEntry.create({
       data: {
         snapshotId: snapshot.id,
         ticketId: ticket.id,
@@ -258,7 +274,7 @@ describe('Issued tickets query integration', () => {
       },
     });
 
-    await prisma.ticketSnapshot.update({
+    await fixturePrisma.ticketSnapshot.update({
       where: {
         id: snapshot.id,
       },
@@ -270,7 +286,7 @@ describe('Issued tickets query integration', () => {
       },
     });
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },

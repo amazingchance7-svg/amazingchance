@@ -4,6 +4,7 @@ import {
   NotificationOutboxStatus,
   NotificationOutboxType,
   PurchaseStatus,
+  PrismaClient,
   SnapshotStatus,
   TicketStatus,
   UserStatus,
@@ -11,11 +12,18 @@ import {
 import { randomUUID } from 'node:crypto';
 
 import { LotteryDrawsService } from '../../src/lottery-draws/lottery-draws.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -24,11 +32,15 @@ describe(
   'Draw publication notifications integration',
   () => {
     let prisma: PrismaService;
+    let fixturePrisma: PrismaClient;
+    let drawPrisma: DrawPrismaService;
     let service: LotteryDrawsService;
 
     beforeAll(async () => {
       prisma = await createTestPrisma();
-      service = new LotteryDrawsService(prisma);
+      fixturePrisma = await createTestAdminPrisma();
+      drawPrisma = await createTestDrawPrisma();
+      service = new LotteryDrawsService(drawPrisma);
     });
 
     beforeEach(async () => {
@@ -36,13 +48,17 @@ describe(
     });
 
     afterAll(async () => {
-      await prisma.$disconnect();
+      await Promise.all([
+        prisma.$disconnect(),
+        fixturePrisma.$disconnect(),
+        drawPrisma.$disconnect(),
+      ]);
     });
 
     it(
       'publishes the draw and atomically enqueues winner and participant notifications',
       async () => {
-        const winnerUser = await prisma.user.create({
+        const winnerUser = await fixturePrisma.user.create({
           data: {
             email: `${randomUUID()}@example.com`,
             passwordHash: 'hash',
@@ -51,7 +67,7 @@ describe(
           },
         });
 
-        const participantUser = await prisma.user.create({
+        const participantUser = await fixturePrisma.user.create({
           data: {
             email: `${randomUUID()}@example.com`,
             passwordHash: 'hash',
@@ -60,7 +76,7 @@ describe(
           },
         });
 
-        const draw = await prisma.lotteryDraw.create({
+        const draw = await fixturePrisma.lotteryDraw.create({
           data: {
             publicId: `W-2026-${randomUUID()}`,
             type: DrawType.WEEKLY,
@@ -75,7 +91,7 @@ describe(
           },
         });
 
-        const winnerPurchase = await prisma.purchase.create({
+        const winnerPurchase = await fixturePrisma.purchase.create({
           data: {
             publicId: `PUR-${randomUUID()}`,
             userId: winnerUser.id,
@@ -91,7 +107,7 @@ describe(
           },
         });
 
-        const participantPurchase = await prisma.purchase.create({
+        const participantPurchase = await fixturePrisma.purchase.create({
           data: {
             publicId: `PUR-${randomUUID()}`,
             userId: participantUser.id,
@@ -107,13 +123,13 @@ describe(
           },
         });
 
-        await ensureTestTicketAllocation(prisma, {
+        await ensureTestTicketAllocation(fixturePrisma, {
           purchaseId: winnerPurchase.id,
           drawId: draw.id,
           numberInDraw: 1n,
         });
 
-        const winnerTicket = await prisma.ticket.create({
+        const winnerTicket = await fixturePrisma.ticket.create({
           data: {
             publicId: `TKT-${randomUUID()}`,
             userId: winnerUser.id,
@@ -124,13 +140,13 @@ describe(
           },
         });
 
-        await ensureTestTicketAllocation(prisma, {
+        await ensureTestTicketAllocation(fixturePrisma, {
           purchaseId: participantPurchase.id,
           drawId: draw.id,
           numberInDraw: 2n,
         });
 
-        const participantTicket = await prisma.ticket.create({
+        const participantTicket = await fixturePrisma.ticket.create({
           data: {
             publicId: `TKT-${randomUUID()}`,
             userId: participantUser.id,
@@ -141,7 +157,7 @@ describe(
           },
         });
 
-        const snapshot = await prisma.ticketSnapshot.create({
+        const snapshot = await fixturePrisma.ticketSnapshot.create({
           data: {
             drawId: draw.id,
             status: SnapshotStatus.BUILDING,
@@ -151,7 +167,7 @@ describe(
           },
         });
 
-        const winnerEntry = await prisma.ticketSnapshotEntry.create({
+        const winnerEntry = await fixturePrisma.ticketSnapshotEntry.create({
           data: {
             snapshotId: snapshot.id,
             ticketId: winnerTicket.id,
@@ -161,7 +177,7 @@ describe(
           },
         });
 
-        await prisma.ticketSnapshotEntry.create({
+        await fixturePrisma.ticketSnapshotEntry.create({
           data: {
             snapshotId: snapshot.id,
             ticketId: participantTicket.id,
@@ -171,7 +187,7 @@ describe(
           },
         });
 
-        await prisma.ticketSnapshot.update({
+        await fixturePrisma.ticketSnapshot.update({
           where: { id: snapshot.id },
           data: {
             status: SnapshotStatus.FINALIZED,
@@ -181,14 +197,14 @@ describe(
           },
         });
 
-        await prisma.lotteryDraw.update({
+        await fixturePrisma.lotteryDraw.update({
           where: { id: draw.id },
           data: {
             status: DrawStatus.WINNER_SELECTION_PENDING,
           },
         });
 
-        const winner = await prisma.drawWinner.create({
+        const winner = await fixturePrisma.drawWinner.create({
           data: {
             drawId: draw.id,
             ticketId: winnerTicket.id,
@@ -198,7 +214,7 @@ describe(
           },
         });
 
-        await prisma.lotteryDraw.update({
+        await fixturePrisma.lotteryDraw.update({
           where: { id: draw.id },
           data: {
             status: DrawStatus.COMPLETED,

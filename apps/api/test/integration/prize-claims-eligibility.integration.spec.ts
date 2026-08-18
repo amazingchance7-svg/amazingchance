@@ -8,6 +8,7 @@ import {
   LedgerSide,
   LedgerTransactionType,
   Prisma,
+  PrismaClient,
   PrizeEligibilityCheckStatus,
   PrizeEligibilityCheckType,
   PrizeStatus,
@@ -26,6 +27,9 @@ import {
   PrizeClaimsService,
 } from '../../src/prize-claims/prize-claims.service';
 import {
+  ClaimPrismaService,
+  DrawPrismaService,
+  PaymentPrismaService,
   PrismaService,
 } from '../../src/prisma/prisma.service';
 import {
@@ -51,6 +55,12 @@ import {
   createTestPrisma,
 } from './database.helper';
 import {
+  createTestAdminPrisma,
+  createTestClaimPrisma,
+  createTestDrawPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
+import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
 
@@ -62,7 +72,17 @@ describe(
   () => {
     let prisma:
       PrismaService;
-    let ledger:
+    let fixturePrisma:
+      PrismaClient;
+    let paymentPrisma:
+      PaymentPrismaService;
+    let drawPrisma:
+      DrawPrismaService;
+    let claimPrisma:
+      ClaimPrismaService;
+    let paymentLedger:
+      LedgerService;
+    let drawLedger:
       LedgerService;
     let claims:
       PrizeClaimsService;
@@ -76,20 +96,33 @@ describe(
     beforeAll(async () => {
       prisma =
         await createTestPrisma();
+      fixturePrisma =
+        await createTestAdminPrisma();
+      paymentPrisma =
+        await createTestPaymentPrisma();
+      drawPrisma =
+        await createTestDrawPrisma();
+      claimPrisma =
+        await createTestClaimPrisma();
 
-      ledger =
+      paymentLedger =
         new LedgerService(
-          prisma,
+          paymentPrisma,
+        );
+
+      drawLedger =
+        new LedgerService(
+          drawPrisma,
         );
 
       claims =
         new PrizeClaimsService(
-          prisma,
+          claimPrisma,
         );
 
       builder =
         new SnapshotBuilderService(
-          prisma,
+          drawPrisma,
           new ConfigService({
             SNAPSHOT_OWNER_SECRET:
               OWNER_SECRET,
@@ -98,19 +131,19 @@ describe(
 
       finalizer =
         new SnapshotFinalizerService(
-          prisma,
+          drawPrisma,
           new SnapshotCryptographyService(),
         );
 
       winnerSelection =
         new WinnerSelectionService(
-          prisma,
-          ledger,
+          drawPrisma,
+          drawLedger,
           new PrizeDistributionService(
-            prisma,
+            drawPrisma,
           ),
           new PrizePoolService(
-            prisma,
+            drawPrisma,
           ),
         );
     });
@@ -122,12 +155,18 @@ describe(
     });
 
     afterAll(async () => {
-      await prisma.$disconnect();
+      await Promise.all([
+        prisma.$disconnect(),
+        fixturePrisma.$disconnect(),
+        paymentPrisma.$disconnect(),
+        drawPrisma.$disconnect(),
+        claimPrisma.$disconnect(),
+      ]);
     });
 
     async function createRecognizedPrize() {
       const user =
-        await prisma.user.create({
+        await fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@example.com`,
@@ -141,7 +180,7 @@ describe(
         });
 
       const reviewer =
-        await prisma.user.create({
+        await fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@example.com`,
@@ -155,7 +194,7 @@ describe(
         });
 
       const draw =
-        await prisma.lotteryDraw
+        await fixturePrisma.lotteryDraw
           .create({
             data: {
               publicId:
@@ -184,7 +223,7 @@ describe(
           });
 
       const purchase =
-        await prisma.purchase
+        await fixturePrisma.purchase
           .create({
             data: {
               publicId:
@@ -212,7 +251,7 @@ describe(
             },
           });
 
-      await ledger.append({
+      await paymentLedger.append({
         type:
           LedgerTransactionType
             .PAYMENT_ALLOCATION,
@@ -274,7 +313,7 @@ describe(
         index += 1
       ) {
         await ensureTestTicketAllocation(
-          prisma,
+          fixturePrisma,
           {
             purchaseId:
               purchase.id,
@@ -285,7 +324,7 @@ describe(
           },
         );
 
-        await prisma.ticket.create({
+        await fixturePrisma.ticket.create({
           data: {
             publicId:
               `TKT-${index}-${randomUUID()}`,
@@ -301,7 +340,7 @@ describe(
         });
       }
 
-      await prisma.lotteryDraw.update({
+      await fixturePrisma.lotteryDraw.update({
         where: {
           id:
             draw.id,
@@ -320,7 +359,7 @@ describe(
         draw.id,
       );
 
-      await prisma.randomnessEvidence
+      await fixturePrisma.randomnessEvidence
         .create({
           data: {
             drawId:
@@ -380,7 +419,7 @@ describe(
           },
         });
 
-      await prisma.lotteryDraw.update({
+      await fixturePrisma.lotteryDraw.update({
         where: {
           id:
             draw.id,
@@ -529,7 +568,7 @@ describe(
           await createRecognizedPrize();
 
         const attacker =
-          await prisma.user.create({
+          await fixturePrisma.user.create({
             data: {
               email:
                 `${randomUUID()}@example.com`,
@@ -620,7 +659,7 @@ describe(
         ).toHaveLength(3);
 
         await expect(
-          prisma.prizeEligibilityCheck
+          fixturePrisma.prizeEligibilityCheck
             .update({
               where: {
                 claimId_type: {
@@ -640,7 +679,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.prizeEligibilityCheck
+          fixturePrisma.prizeEligibilityCheck
             .delete({
               where: {
                 claimId_type: {
@@ -736,7 +775,7 @@ describe(
           });
 
         await expect(
-          prisma.prizeClaim.update({
+          fixturePrisma.prizeClaim.update({
             where: {
               id:
                 claim.id,
@@ -749,7 +788,7 @@ describe(
         ).rejects.toThrow();
 
         await expect(
-          prisma.prizeClaim.delete({
+          fixturePrisma.prizeClaim.delete({
             where: {
               id:
                 claim.id,

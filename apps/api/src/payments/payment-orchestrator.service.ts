@@ -23,7 +23,7 @@ import { PlayerProtectionService } from '../compliance/player-protection.service
 import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
 import { FinancialAllocationService } from '../finance/financial-allocation.service';
 import { LedgerService } from '../ledger/ledger.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PaymentPrismaService } from '../prisma/prisma.service';
 import { TicketAllocationService } from '../tickets/ticket-allocation.service';
 
 export type ConfirmPaymentResult = {
@@ -48,7 +48,7 @@ const MAX_TRANSACTION_ATTEMPTS = 3;
 @Injectable()
 export class PaymentOrchestratorService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PaymentPrismaService,
     private readonly ledger: LedgerService,
     private readonly allocation:
       TicketAllocationService,

@@ -20,6 +20,14 @@ const base = {
     3001,
   DATABASE_URL:
     'postgresql://amazing_chance_runtime:runtime-password@db.internal.example:5432/amazing_chance?schema=public&sslmode=require',
+  PAYMENT_DATABASE_URL:
+    'postgresql://amazing_chance_payment_runtime:payment-password@db.internal.example:5432/amazing_chance?schema=public&sslmode=require',
+  DRAW_DATABASE_URL:
+    'postgresql://amazing_chance_draw_runtime:draw-password@db.internal.example:5432/amazing_chance?schema=public&sslmode=require',
+  CLAIM_DATABASE_URL:
+    'postgresql://amazing_chance_claim_runtime:claim-password@db.internal.example:5432/amazing_chance?schema=public&sslmode=require',
+  PAYOUT_DATABASE_URL:
+    'postgresql://amazing_chance_payout_runtime:payout-password@db.internal.example:5432/amazing_chance?schema=public&sslmode=require',
   REDIS_URL:
     'rediss://default:redis-password@redis.internal.example:6380',
   WEB_URL:
@@ -136,6 +144,51 @@ describe(
           }),
         ).toThrow(
           'DATABASE_URL cannot target localhost in production',
+        );
+      },
+    );
+
+    it(
+      'requires every isolated database URL in production',
+      () => {
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            PAYMENT_DATABASE_URL:
+              undefined,
+          }),
+        ).toThrow(
+          'PAYMENT_DATABASE_URL is required in production',
+        );
+      },
+    );
+
+    it(
+      'rejects reuse of one database identity across security domains',
+      () => {
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            PAYMENT_DATABASE_URL:
+              base.DATABASE_URL,
+          }),
+        ).toThrow(
+          'must use distinct database users',
+        );
+      },
+    );
+
+    it(
+      'rejects privileged identity in a specialized database domain',
+      () => {
+        expect(() =>
+          validateEnvironment({
+            ...base,
+            DRAW_DATABASE_URL:
+              'postgresql://postgres:password@db.internal.example:5432/amazing_chance',
+          }),
+        ).toThrow(
+          'DRAW_DATABASE_URL must use a dedicated least-privilege runtime database user',
         );
       },
     );

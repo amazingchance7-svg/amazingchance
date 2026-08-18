@@ -1,21 +1,33 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   RandomnessStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 
 describe('SEC-005 immutable randomness and winners', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    drawPrisma = await createTestDrawPrisma();
   });
 
   beforeEach(async () => {
@@ -23,12 +35,16 @@ describe('SEC-005 immutable randomness and winners', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createRandomness() {
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-${randomUUID()}`,
@@ -52,7 +68,7 @@ describe('SEC-005 immutable randomness and winners', () => {
       });
 
     const evidence =
-      await prisma.randomnessEvidence.create({
+      await fixturePrisma.randomnessEvidence.create({
         data: {
           drawId: draw.id,
           attemptNumber: 1,
@@ -102,7 +118,7 @@ describe('SEC-005 immutable randomness and winners', () => {
       await createRandomness();
 
     await expect(
-      prisma.randomnessEvidence.update({
+      drawPrisma.randomnessEvidence.update({
         where: {
           id: evidence.id,
         },
@@ -120,7 +136,7 @@ describe('SEC-005 immutable randomness and winners', () => {
       await createRandomness();
 
     await expect(
-      prisma.randomnessEvidence.delete({
+      fixturePrisma.randomnessEvidence.delete({
         where: {
           id: evidence.id,
         },
@@ -132,7 +148,7 @@ describe('SEC-005 immutable randomness and winners', () => {
 
   it('prevents modifying committed request identity before terminal state', async () => {
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-${randomUUID()}`,
@@ -156,7 +172,7 @@ describe('SEC-005 immutable randomness and winners', () => {
       });
 
     const evidence =
-      await prisma.randomnessEvidence.create({
+      await fixturePrisma.randomnessEvidence.create({
         data: {
           drawId: draw.id,
           attemptNumber: 1,
@@ -178,7 +194,7 @@ describe('SEC-005 immutable randomness and winners', () => {
       });
 
     await expect(
-      prisma.randomnessEvidence.update({
+      drawPrisma.randomnessEvidence.update({
         where: {
           id: evidence.id,
         },
