@@ -140,6 +140,9 @@ jobs:
           docker --version
           docker compose version
 
+      - name: Verify dependency policy
+        run: node scripts/verify-supply-chain.cjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
