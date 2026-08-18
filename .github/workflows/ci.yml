@@ -30,12 +30,13 @@ jobs:
 
     steps:
       - name: Check out full repository history
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Scan repository for secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,16 +64,70 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify immutable GitHub Action references
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs')
+          const path = require('path')
+
+          const workflowDir = '.github/workflows'
+          const files = fs.readdirSync(workflowDir)
+            .filter((file) => /\.ya?ml$/i.test(file))
+
+          const violations = []
+
+          for (const file of files) {
+            const fullPath = path.join(workflowDir, file)
+            const content = fs.readFileSync(fullPath, 'utf8')
+
+            const pattern = /^\s*(?:-\s*)?uses:\s*([^\s#]+)/gm
+
+            for (const match of content.matchAll(pattern)) {
+              const reference = match[1]
+
+              if (reference.startsWith('./')) {
+                continue
+              }
+
+              const separator = reference.lastIndexOf('@')
+
+              if (separator < 0) {
+                violations.push(`${fullPath}: ${reference}`)
+                continue
+              }
+
+              const revision = reference.slice(separator + 1)
+
+              if (!/^[0-9a-f]{40}$/i.test(revision)) {
+                violations.push(`${fullPath}: ${reference}`)
+              }
+            }
+          }
+
+          if (violations.length > 0) {
+            console.error('Mutable GitHub Action references detected:')
+            for (const violation of violations) {
+              console.error(`- ${violation}`)
+            }
+            process.exit(1)
+          }
+
+          console.log('All external GitHub Actions are pinned to full commit SHAs.')
+          NODE
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 10.15.0
           run_install: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24.18.0
           cache: pnpm
@@ -85,11 +140,14 @@ jobs:
           docker --version
           docker compose version
 
+      - name: Verify dependency policy
+        run: node scripts/verify-supply-chain.cjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Audit dependencies
-        run: pnpm audit --audit-level critical
+        run: pnpm audit --audit-level high
 
       - name: Check Prisma formatting
         run: pnpm --filter @amazing-chance/api exec prisma format --check
@@ -106,8 +164,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      - name: Unit tests
+        run: pnpm test:unit
+
+      - name: Integration tests
+        run: pnpm test:integration
 
       - name: Build
         run: pnpm build
