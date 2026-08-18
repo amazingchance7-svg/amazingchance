@@ -1,6 +1,14 @@
 version: 2
 
 updates:
+  # npm / pnpm monorepo
+  #
+  # Routine version updates:
+  # - minor + patch only
+  # - same dependency is grouped across workspace directories
+  #
+  # Dependabot security updates are intentionally not restricted
+  # by the version-update SemVer allowlist below.
   - package-ecosystem: "npm"
     directories:
       - "/"
@@ -9,10 +17,44 @@ updates:
     schedule:
       interval: "weekly"
     versioning-strategy: "increase"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
 
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+
+    groups:
+      monorepo-dependencies:
+        applies-to: "version-updates"
+        group-by: "dependency-name"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions
+  #
+  # Keep routine Action upgrades conservative and grouped.
+  # External Action refs remain pinned to immutable commit SHAs
+  # by the CI policy introduced in SEC-027.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
+
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
+
+    groups:
+      actions-minor-and-patch:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
