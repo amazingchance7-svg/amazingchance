@@ -3,6 +3,7 @@ import {
   DrawStatus,
   DrawType,
   PaymentStatus,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
   WebhookStatus,
@@ -17,12 +18,19 @@ import { PaymentOrchestratorService } from '../../src/payments/payment-orchestra
 import { StripeClient } from '../../src/payments/stripe.client';
 import { StripeRefundService } from '../../src/payments/stripe-refund.service';
 import { StripeWebhookService } from '../../src/payments/stripe-webhook.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { TicketAllocationService } from '../../src/tickets/ticket-allocation.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 const STRIPE_SECRET_KEY =
   'test_stripe_secret_key_for_sdk_initialization';
@@ -31,11 +39,17 @@ const STRIPE_WEBHOOK_SECRET =
 
 describe('Stripe webhook pipeline integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
   let service: StripeWebhookService;
   let stripe: Stripe;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    paymentPrisma =
+      await createTestPaymentPrisma();
 
     const config = new ConfigService({
       STRIPE_SECRET_KEY,
@@ -53,20 +67,20 @@ describe('Stripe webhook pipeline integration', () => {
         }),
     } as unknown as PlayerProtectionService;
     const orchestrator = new PaymentOrchestratorService(
-      prisma,
-      new LedgerService(prisma),
+      paymentPrisma,
+      new LedgerService(paymentPrisma),
       new TicketAllocationService(),
-      new FinancialAllocationService(prisma),
+      new FinancialAllocationService(paymentPrisma),
       playerProtection,
     );
     const refundService =
       new StripeRefundService(
-        prisma,
-        new LedgerService(prisma),
+        paymentPrisma,
+        new LedgerService(paymentPrisma),
         new StripeClient(config),
       );
 service = new StripeWebhookService(
-      prisma,
+      paymentPrisma,
       new StripeClient(config),
       orchestrator,
       refundService,
@@ -76,7 +90,7 @@ service = new StripeWebhookService(
   beforeEach(async () => {
     await cleanTestDatabase(prisma);
 
-    await prisma.allocationRule.create({
+    await fixturePrisma.allocationRule.create({
       data: {
         version: 1,
         weeklyJackpotBps: 7000,
@@ -90,11 +104,15 @@ service = new StripeWebhookService(
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function createScenario(ticketCount = 2) {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -103,7 +121,7 @@ service = new StripeWebhookService(
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -120,7 +138,7 @@ service = new StripeWebhookService(
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: user.id,
@@ -134,7 +152,7 @@ service = new StripeWebhookService(
       },
     });
 
-    const payment = await prisma.payment.create({
+    const payment = await fixturePrisma.payment.create({
       data: {
         purchaseId: purchase.id,
         provider: 'STRIPE',
@@ -314,7 +332,7 @@ service = new StripeWebhookService(
   it('automatically starts late-payment refund when succeeded webhook arrives after cutoff', async () => {
     const scenario = await createScenario(1);
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: scenario.draw.id,
       },
@@ -452,7 +470,7 @@ service = new StripeWebhookService(
   it('does not downgrade REFUND_PENDING when a distinct succeeded event is delivered again', async () => {
     const scenario = await createScenario(1);
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: scenario.draw.id,
       },
@@ -592,7 +610,7 @@ service = new StripeWebhookService(
       ).status,
     ).toBe(PurchaseStatus.COMPLETED);
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: scenario.draw.id,
       },
@@ -674,7 +692,7 @@ service = new StripeWebhookService(
       failureMessage: 'Card declined',
     });
 
-    const attempt = await prisma.paymentAttempt.create({
+    const attempt = await fixturePrisma.paymentAttempt.create({
       data: {
         paymentId: scenario.payment.id,
         attemptNumber: 1,
@@ -879,7 +897,7 @@ service = new StripeWebhookService(
         'confirmPayment',
       )
       .mockImplementationOnce(async () => {
-        await prisma.lotteryDraw.update({
+        await fixturePrisma.lotteryDraw.update({
           where: {
             id: scenario.draw.id,
           },

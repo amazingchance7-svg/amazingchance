@@ -1,24 +1,38 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   RandomnessStatus,
   SnapshotStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { RandomnessEvidenceService } from '../../src/randomness/randomness-evidence.service';
 import type { RandomOrgSignedResult } from '../../src/randomness/randomness-evidence.types';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 
 describe('RandomnessEvidenceService integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    drawPrisma =
+      await createTestDrawPrisma();
   });
 
   beforeEach(async () => {
@@ -26,12 +40,16 @@ describe('RandomnessEvidenceService integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createFinalizedDraw() {
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-${randomUUID()}`,
@@ -55,7 +73,7 @@ describe('RandomnessEvidenceService integration', () => {
       });
 
     const snapshot =
-      await prisma.ticketSnapshot.create({
+      await fixturePrisma.ticketSnapshot.create({
         data: {
           drawId: draw.id,
           status:
@@ -175,7 +193,7 @@ describe('RandomnessEvidenceService integration', () => {
     return {
       service:
         new RandomnessEvidenceService(
-          prisma,
+          drawPrisma,
           randomOrg as never,
         ),
       randomOrg,
@@ -617,7 +635,7 @@ describe('RandomnessEvidenceService integration', () => {
 
   it('refuses randomness before the snapshot is finalized', async () => {
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-${randomUUID()}`,

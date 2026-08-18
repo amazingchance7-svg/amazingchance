@@ -1,5 +1,6 @@
 import {
   PaymentStatus,
+  PrismaClient,
   PurchaseStatus,
   TicketStatus,
   UserStatus,
@@ -13,16 +14,21 @@ import {
   createTestPrisma,
 } from './database.helper';
 import {
+  createTestAdminPrisma,
+} from './database-role.helper';
+import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
 
 
 describe('Admin operations backoffice', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
   let service: AdminOperationsService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
     service = new AdminOperationsService(prisma);
   });
 
@@ -31,7 +37,10 @@ describe('Admin operations backoffice', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+    ]);
   });
 
   it('separates backoffice read permissions between PLATFORM_ADMIN and BUSINESS_OWNER', async () => {
@@ -107,7 +116,7 @@ describe('Admin operations backoffice', () => {
   });
 
   it('returns aggregate overview without exposing secret fields', async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: 'admin-overview-customer@example.com',
         passwordHash: 'integration-test-password-hash',
@@ -115,7 +124,7 @@ describe('Admin operations backoffice', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: 'weekly-admin-overview',
         type: 'WEEKLY',
@@ -128,7 +137,7 @@ describe('Admin operations backoffice', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: 'purchase-admin-overview',
         userId: user.id,
@@ -144,7 +153,7 @@ describe('Admin operations backoffice', () => {
       },
     });
 
-    await prisma.payment.create({
+    await fixturePrisma.payment.create({
       data: {
         purchaseId: purchase.id,
         provider: 'STRIPE',
@@ -157,7 +166,7 @@ describe('Admin operations backoffice', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -165,7 +174,7 @@ describe('Admin operations backoffice', () => {
       },
     );
 
-    await prisma.ticket.create({
+    await fixturePrisma.ticket.create({
       data: {
         publicId: 'ticket-admin-overview',
         userId: user.id,
@@ -211,7 +220,7 @@ describe('Admin operations backoffice', () => {
       where: { code: 'CUSTOMER' },
     });
 
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: 'backoffice-customer@example.com',
         passwordHash: 'must-never-be-returned',
@@ -224,7 +233,7 @@ describe('Admin operations backoffice', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: 'weekly-backoffice-list',
         type: 'WEEKLY',
@@ -237,7 +246,7 @@ describe('Admin operations backoffice', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: 'purchase-backoffice-list',
         userId: user.id,
@@ -253,7 +262,7 @@ describe('Admin operations backoffice', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -261,7 +270,7 @@ describe('Admin operations backoffice', () => {
       },
     );
 
-    await prisma.ticket.create({
+    await fixturePrisma.ticket.create({
       data: {
         publicId: 'ticket-backoffice-list',
         userId: user.id,

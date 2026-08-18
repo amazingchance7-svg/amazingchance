@@ -4,6 +4,7 @@ import {
   LedgerSide,
   LedgerTransactionType,
   PaymentStatus,
+  PrismaClient,
   PurchaseStatus,
   TicketStatus,
   UserStatus,
@@ -12,7 +13,10 @@ import type Stripe from 'stripe';
 
 import { Permissions } from '../../src/authorization/permissions.constants';
 import { LedgerService } from '../../src/ledger/ledger.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { StripeClient } from '../../src/payments/stripe.client';
 import { StripeRefundService } from '../../src/payments/stripe-refund.service';
 import {
@@ -20,12 +24,18 @@ import {
   createTestPrisma,
 } from './database.helper';
 import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
+import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
 
 
 describe('Stripe refund pipeline', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
   let ledger: LedgerService;
   let stripeClient: {
     createRefund: jest.Mock;
@@ -35,7 +45,12 @@ describe('Stripe refund pipeline', () => {
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
-    ledger = new LedgerService(prisma);
+    fixturePrisma =
+      await createTestAdminPrisma();
+    paymentPrisma =
+      await createTestPaymentPrisma();
+    ledger =
+      new LedgerService(paymentPrisma);
   });
 
   beforeEach(async () => {
@@ -47,18 +62,22 @@ describe('Stripe refund pipeline', () => {
     };
 
     service = new StripeRefundService(
-      prisma,
+      paymentPrisma,
       ledger,
       stripeClient as unknown as StripeClient,
     );
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function fixture() {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: 'refund-customer@example.com',
         passwordHash: 'test-password-hash',
@@ -66,7 +85,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: 'weekly-refund-test',
         type: 'WEEKLY',
@@ -79,7 +98,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: 'purchase-refund-test',
         userId: user.id,
@@ -95,7 +114,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const payment = await prisma.payment.create({
+    const payment = await fixturePrisma.payment.create({
       data: {
         purchaseId: purchase.id,
         provider: 'STRIPE',
@@ -108,7 +127,7 @@ describe('Stripe refund pipeline', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -116,7 +135,7 @@ describe('Stripe refund pipeline', () => {
       },
     );
 
-    await prisma.ticket.create({
+    await fixturePrisma.ticket.create({
       data: {
         publicId: 'ticket-refund-test',
         userId: user.id,
@@ -400,7 +419,7 @@ describe('Stripe refund pipeline', () => {
 
 
   it('requests automatic refund for a succeeded late payment without allocating tickets or jackpot', async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: 'late-payment@example.com',
         passwordHash: 'test-password-hash',
@@ -408,7 +427,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: 'weekly-late-payment-test',
         type: 'WEEKLY',
@@ -422,7 +441,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: 'purchase-late-payment-test',
         userId: user.id,
@@ -437,7 +456,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const payment = await prisma.payment.create({
+    const payment = await fixturePrisma.payment.create({
       data: {
         purchaseId: purchase.id,
         provider: 'STRIPE',
@@ -528,7 +547,7 @@ describe('Stripe refund pipeline', () => {
   });
 
   it('completes late-payment refund directly from payment clearing without jackpot reversal', async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: 'late-payment-complete@example.com',
         passwordHash: 'test-password-hash',
@@ -536,7 +555,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId:
           'weekly-late-payment-complete-test',
@@ -551,7 +570,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId:
           'purchase-late-payment-complete-test',
@@ -567,7 +586,7 @@ describe('Stripe refund pipeline', () => {
       },
     });
 
-    const payment = await prisma.payment.create({
+    const payment = await fixturePrisma.payment.create({
       data: {
         purchaseId: purchase.id,
         provider: 'STRIPE',
@@ -670,7 +689,7 @@ describe('Stripe refund pipeline', () => {
   it('blocks refund after a ticket snapshot exists', async () => {
     const { purchase, draw } = await fixture();
 
-    await prisma.ticketSnapshot.create({
+    await fixturePrisma.ticketSnapshot.create({
       data: {
         drawId: draw.id,
         status: 'BUILDING',

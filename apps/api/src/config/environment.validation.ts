@@ -30,6 +30,14 @@ const FORBIDDEN_PRODUCTION_DATABASE_USERS =
     'root',
   ]);
 
+const PRODUCTION_DATABASE_URL_KEYS = [
+  'DATABASE_URL',
+  'PAYMENT_DATABASE_URL',
+  'DRAW_DATABASE_URL',
+  'CLAIM_DATABASE_URL',
+  'PAYOUT_DATABASE_URL',
+] as const;
+
 const PLACEHOLDER_MARKERS = [
   'change_me',
   'changeme',
@@ -53,6 +61,26 @@ class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   DATABASE_URL!: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  PAYMENT_DATABASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  DRAW_DATABASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  CLAIM_DATABASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  PAYOUT_DATABASE_URL?: string;
 
   @IsUrl({
     require_tld: false,
@@ -158,15 +186,16 @@ class EnvironmentVariables {
 }
 
 function assertProductionDatabaseUrl(
+  name: (typeof PRODUCTION_DATABASE_URL_KEYS)[number],
   value: string,
-): void {
+): string {
   let url: URL;
 
   try {
     url = new URL(value);
   } catch {
     throw new Error(
-      'Environment validation failed: DATABASE_URL must be a valid PostgreSQL URL in production',
+      `Environment validation failed: ${name} must be a valid PostgreSQL URL in production`,
     );
   }
 
@@ -177,7 +206,7 @@ function assertProductionDatabaseUrl(
       'postgres:'
   ) {
     throw new Error(
-      'Environment validation failed: DATABASE_URL must use postgresql:// in production',
+      `Environment validation failed: ${name} must use postgresql:// in production`,
     );
   }
 
@@ -192,7 +221,7 @@ function assertProductionDatabaseUrl(
       .has(username)
   ) {
     throw new Error(
-      'Environment validation failed: DATABASE_URL must use a dedicated least-privilege runtime database user in production',
+      `Environment validation failed: ${name} must use a dedicated least-privilege runtime database user in production`,
     );
   }
 
@@ -205,9 +234,11 @@ function assertProductionDatabaseUrl(
     hostname === '::1'
   ) {
     throw new Error(
-      'Environment validation failed: DATABASE_URL cannot target localhost in production',
+      `Environment validation failed: ${name} cannot target localhost in production`,
     );
   }
+
+  return username;
 }
 
 function assertProductionRedisUrl(
@@ -414,10 +445,44 @@ export function validateEnvironment(
     );
   }
 
-  assertProductionDatabaseUrl(
-    validatedConfig
-      .DATABASE_URL,
-  );
+  const databaseUsers =
+    new Map<string, string>();
+
+  for (
+    const name of
+      PRODUCTION_DATABASE_URL_KEYS
+  ) {
+    const value =
+      validatedConfig[name];
+
+    if (!value) {
+      throw new Error(
+        `Environment validation failed: ${name} is required in production`,
+      );
+    }
+
+    const username =
+      assertProductionDatabaseUrl(
+        name,
+        value,
+      );
+
+    const existingDomain =
+      databaseUsers.get(
+        username,
+      );
+
+    if (existingDomain) {
+      throw new Error(
+        `Environment validation failed: ${existingDomain} and ${name} must use distinct database users`,
+      );
+    }
+
+    databaseUsers.set(
+      username,
+      name,
+    );
+  }
 
   assertProductionRedisUrl(
     validatedConfig

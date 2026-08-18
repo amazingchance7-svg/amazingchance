@@ -6,19 +6,27 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import { PaymentPrismaService, PrismaService } from '../../src/prisma/prisma.service';
 import { TicketAllocationService } from '../../src/tickets/ticket-allocation.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('Ticket allocation stress integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: Awaited<ReturnType<typeof createTestAdminPrisma>>;
+  let paymentPrisma: PaymentPrismaService;
   let service: TicketAllocationService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
     service = new TicketAllocationService();
   });
 
@@ -27,11 +35,15 @@ describe('Ticket allocation stress integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   it('allocates 50 parallel non-overlapping ranges without gaps', async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -40,7 +52,7 @@ describe('Ticket allocation stress integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -65,7 +77,7 @@ describe('Ticket allocation stress integration', () => {
 
     const purchases = await Promise.all(
       ticketCounts.map((ticketCount, index) =>
-        prisma.purchase.create({
+        fixturePrisma.purchase.create({
           data: {
             publicId:
               `PUR-${index}-${randomUUID()}`,
@@ -87,7 +99,7 @@ describe('Ticket allocation stress integration', () => {
 
     const allocations = await Promise.all(
       purchases.map((purchase, index) =>
-        prisma.$transaction((tx) =>
+        paymentPrisma.$transaction((tx) =>
           service.reserveRange(tx, {
             purchaseId: purchase.id,
             drawId: draw.id,
@@ -203,7 +215,7 @@ describe('Ticket allocation stress integration', () => {
   });
 
   it('isolates concurrent sequences for different draws', async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -214,7 +226,7 @@ describe('Ticket allocation stress integration', () => {
 
     const draws = await Promise.all(
       [1, 2].map((sequenceNumber) =>
-        prisma.lotteryDraw.create({
+        fixturePrisma.lotteryDraw.create({
           data: {
             publicId:
               `W-2026-${randomUUID()}`,
@@ -240,7 +252,7 @@ describe('Ticket allocation stress integration', () => {
         Array.from(
           { length: 10 },
           async () =>
-            prisma.purchase.create({
+            fixturePrisma.purchase.create({
               data: {
                 publicId:
                   `PUR-${randomUUID()}`,
@@ -265,7 +277,7 @@ describe('Ticket allocation stress integration', () => {
 
     await Promise.all(
       purchases.map((purchase) =>
-        prisma.$transaction((tx) =>
+        paymentPrisma.$transaction((tx) =>
           service.reserveRange(tx, {
             purchaseId: purchase.id,
             drawId: purchase.drawId,

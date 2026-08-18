@@ -9,7 +9,7 @@ import {
     SnapshotStatus,
   } from '@prisma/client';
 
-  import { PrismaService } from '../prisma/prisma.service';
+  import { DrawPrismaService } from '../prisma/prisma.service';
   import { SnapshotCryptographyService } from './snapshot-cryptography.service';
 
   type LockedSnapshotRow = {
@@ -38,7 +38,7 @@ import {
   @Injectable()
   export class SnapshotFinalizerService {
     constructor(
-      private readonly prisma: PrismaService,
+      private readonly prisma: DrawPrismaService,
       private readonly cryptography: SnapshotCryptographyService,
     ) {}
 

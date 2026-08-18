@@ -2,12 +2,16 @@ import { ConfigService } from '@nestjs/config';
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { PublicProofService } from '../../src/snapshots/public-proof.service';
 import { PublicVerificationService } from '../../src/snapshots/public-verification.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
@@ -18,6 +22,10 @@ import {
   createTestPrisma,
 } from './database.helper';
 import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
+import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
 
@@ -27,6 +35,8 @@ const OWNER_SECRET =
 
 describe('Public verification integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
   let cryptography: SnapshotCryptographyService;
   let builder: SnapshotBuilderService;
   let finalizer: SnapshotFinalizerService;
@@ -35,17 +45,19 @@ describe('Public verification integration', () => {
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    drawPrisma = await createTestDrawPrisma();
     cryptography = new SnapshotCryptographyService();
 
     builder = new SnapshotBuilderService(
-      prisma,
+      drawPrisma,
       new ConfigService({
         SNAPSHOT_OWNER_SECRET: OWNER_SECRET,
       }),
     );
 
     finalizer = new SnapshotFinalizerService(
-      prisma,
+      drawPrisma,
       cryptography,
     );
 
@@ -65,11 +77,15 @@ describe('Public verification integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createBuiltSnapshot(ticketCount = 4) {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -78,7 +94,7 @@ describe('Public verification integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -94,7 +110,7 @@ describe('Public verification integration', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: user.id,
@@ -118,7 +134,7 @@ describe('Public verification integration', () => {
       index += 1
     ) {
       await ensureTestTicketAllocation(
-        prisma,
+        fixturePrisma,
         {
           purchaseId: purchase.id,
           drawId: draw.id,
@@ -127,7 +143,7 @@ describe('Public verification integration', () => {
       );
 
       tickets.push(
-        await prisma.ticket.create({
+        await fixturePrisma.ticket.create({
           data: {
             publicId: `TKT-${randomUUID()}`,
             userId: user.id,
@@ -139,7 +155,7 @@ describe('Public verification integration', () => {
       );
     }
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },

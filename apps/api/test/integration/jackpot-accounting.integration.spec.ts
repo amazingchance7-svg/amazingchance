@@ -9,24 +9,47 @@ import { randomUUID } from 'node:crypto';
 
 import { JackpotAccountingService } from '../../src/finance/jackpot-accounting.service';
 import { LedgerService } from '../../src/ledger/ledger.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('Jackpot accounting integration', () => {
   let prisma: PrismaService;
-  let ledger: LedgerService;
+  let fixturePrisma: Awaited<ReturnType<typeof createTestAdminPrisma>>;
+  let paymentPrisma: PaymentPrismaService;
+  let drawPrisma: DrawPrismaService;
+  let paymentLedger: LedgerService;
+  let drawLedger: LedgerService;
   let service: JackpotAccountingService;
 
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    paymentPrisma =
+      await createTestPaymentPrisma();
+    drawPrisma =
+      await createTestDrawPrisma();
 
-    ledger =
+    paymentLedger =
       new LedgerService(
-        prisma,
+        paymentPrisma,
+      );
+    drawLedger =
+      new LedgerService(
+        drawPrisma,
       );
 
     service =
@@ -42,7 +65,12 @@ describe('Jackpot accounting integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createWeeklyDraw(
@@ -52,7 +80,7 @@ describe('Jackpot accounting integration', () => {
       scheduledDrawAt?: Date;
     },
   ) {
-    return prisma.lotteryDraw.create({
+    return fixturePrisma.lotteryDraw.create({
       data: {
         publicId:
           `W-${randomUUID()}`,
@@ -100,7 +128,7 @@ describe('Jackpot accounting integration', () => {
       input.annualMinor +
       companyMinor;
 
-    return ledger.append({
+    return paymentLedger.append({
       type:
         LedgerTransactionType.PAYMENT_ALLOCATION,
       idempotencyKey:
@@ -160,7 +188,7 @@ describe('Jackpot accounting integration', () => {
     amountMinor: bigint,
     currency = 'USD',
   ) {
-    return ledger.append({
+    return drawLedger.append({
       type:
         LedgerTransactionType.PRIZE_RECOGNIZED,
       idempotencyKey:
@@ -197,7 +225,7 @@ describe('Jackpot accounting integration', () => {
     amountMinor: bigint,
     currency = 'USD',
   ) {
-    return ledger.append({
+    return drawLedger.append({
       type:
         LedgerTransactionType.PRIZE_RECOGNIZED,
       idempotencyKey:
@@ -582,7 +610,7 @@ describe('Jackpot accounting integration', () => {
 
   it('rejects weekly accounting for an annual draw', async () => {
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `A-${randomUUID()}`,

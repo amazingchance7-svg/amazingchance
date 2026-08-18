@@ -2,13 +2,17 @@ import { ConfigService } from '@nestjs/config';
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   SnapshotStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
 import { SnapshotCryptographyService } from '../../src/snapshots/snapshot-cryptography.service';
 import { SnapshotFinalizerService } from '../../src/snapshots/snapshot-finalizer.service';
@@ -16,6 +20,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -26,21 +34,28 @@ const OWNER_SECRET =
 
 describe('Snapshot finalizer integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
   let builder: SnapshotBuilderService;
   let cryptography: SnapshotCryptographyService;
   let finalizer: SnapshotFinalizerService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    drawPrisma =
+      await createTestDrawPrisma();
+
     cryptography = new SnapshotCryptographyService();
     builder = new SnapshotBuilderService(
-      prisma,
+      drawPrisma,
       new ConfigService({
         SNAPSHOT_OWNER_SECRET: OWNER_SECRET,
       }),
     );
     finalizer = new SnapshotFinalizerService(
-      prisma,
+      drawPrisma,
       cryptography,
     );
   });
@@ -50,11 +65,15 @@ describe('Snapshot finalizer integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createBuiltSnapshot(ticketCount = 3) {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -63,7 +82,7 @@ describe('Snapshot finalizer integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -75,7 +94,7 @@ describe('Snapshot finalizer integration', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: user.id,
@@ -93,7 +112,7 @@ describe('Snapshot finalizer integration', () => {
 
     for (let index = 1; index <= ticketCount; index += 1) {
       await ensureTestTicketAllocation(
-        prisma,
+        fixturePrisma,
         {
           purchaseId: purchase.id,
           drawId: draw.id,
@@ -101,7 +120,7 @@ describe('Snapshot finalizer integration', () => {
         },
       );
 
-      await prisma.ticket.create({
+      await fixturePrisma.ticket.create({
         data: {
           publicId: `TKT-${randomUUID()}`,
           userId: user.id,
@@ -112,7 +131,7 @@ describe('Snapshot finalizer integration', () => {
       });
     }
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: { id: draw.id },
       data: { status: DrawStatus.SALES_CLOSED },
     });
@@ -209,7 +228,7 @@ describe('Snapshot finalizer integration', () => {
   it('rejects a snapshot with an inconsistent entry count', async () => {
     const scenario = await createBuiltSnapshot();
 
-    await prisma.ticketSnapshot.update({
+    await fixturePrisma.ticketSnapshot.update({
       where: { id: scenario.built.snapshotId },
       data: { ticketCount: 4n },
     });
@@ -232,7 +251,7 @@ describe('Snapshot finalizer integration', () => {
         },
       });
 
-    await prisma.ticketSnapshotEntry.update({
+    await fixturePrisma.ticketSnapshotEntry.update({
       where: { id: secondEntry.id },
       data: { position: 4n },
     });
@@ -247,7 +266,7 @@ describe('Snapshot finalizer integration', () => {
   it('rejects finalization when the draw is in the wrong state', async () => {
     const scenario = await createBuiltSnapshot();
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: { id: scenario.draw.id },
       data: { status: DrawStatus.MANUAL_REVIEW },
     });
@@ -260,7 +279,7 @@ describe('Snapshot finalizer integration', () => {
   });
 
   it('rejects an unknown snapshot', async () => {
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,

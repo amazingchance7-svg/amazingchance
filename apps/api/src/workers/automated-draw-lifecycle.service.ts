@@ -6,7 +6,7 @@ import {
 import { DrawStatus } from '@prisma/client';
 
 import { LotteryDrawsService } from '../lottery-draws/lottery-draws.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 import { RandomnessEvidenceService } from '../randomness/randomness-evidence.service';
 import { SnapshotBuilderService } from '../snapshots/snapshot-builder.service';
 import { SnapshotFinalizerService } from '../snapshots/snapshot-finalizer.service';
@@ -41,7 +41,7 @@ export class AutomatedDrawLifecycleService {
     );
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: DrawPrismaService,
     private readonly snapshotBuilder: SnapshotBuilderService,
     private readonly snapshotFinalizer: SnapshotFinalizerService,
     private readonly randomness: RandomnessEvidenceService,

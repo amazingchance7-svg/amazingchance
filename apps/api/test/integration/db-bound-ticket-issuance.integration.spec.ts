@@ -1,22 +1,34 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('SEC-004 DB-bound ticket issuance', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
   });
 
   beforeEach(async () => {
@@ -24,13 +36,17 @@ describe('SEC-004 DB-bound ticket issuance', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function fixture() {
     const [owner, otherUser] =
       await Promise.all([
-        prisma.user.create({
+        fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@owner.example`,
@@ -41,7 +57,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
               new Date(),
           },
         }),
-        prisma.user.create({
+        fixturePrisma.user.create({
           data: {
             email:
               `${randomUUID()}@other.example`,
@@ -56,7 +72,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
 
     const [draw, otherDraw] =
       await Promise.all([
-        prisma.lotteryDraw.create({
+        fixturePrisma.lotteryDraw.create({
           data: {
             publicId:
               `W-${randomUUID()}`,
@@ -78,7 +94,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
               100n,
           },
         }),
-        prisma.lotteryDraw.create({
+        fixturePrisma.lotteryDraw.create({
           data: {
             publicId:
               `W-${randomUUID()}`,
@@ -103,7 +119,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
       ]);
 
     const purchase =
-      await prisma.purchase.create({
+      await fixturePrisma.purchase.create({
         data: {
           publicId:
             `PUR-${randomUUID()}`,
@@ -121,7 +137,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
       });
 
     const allocation =
-      await prisma.ticketAllocation.create({
+      await fixturePrisma.ticketAllocation.create({
         data: {
           purchaseId:
             purchase.id,
@@ -147,7 +163,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
     const data = await fixture();
 
     await expect(
-      prisma.ticket.create({
+      paymentPrisma.ticket.create({
         data: {
           publicId:
             `TKT-${randomUUID()}`,
@@ -171,7 +187,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
     const data = await fixture();
 
     await expect(
-      prisma.ticket.create({
+      paymentPrisma.ticket.create({
         data: {
           publicId:
             `TKT-${randomUUID()}`,
@@ -190,7 +206,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
     const data = await fixture();
 
     await expect(
-      prisma.ticket.create({
+      paymentPrisma.ticket.create({
         data: {
           publicId:
             `TKT-${randomUUID()}`,
@@ -208,7 +224,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
   it('rejects ticket issuance without a reserved allocation', async () => {
     const data = await fixture();
 
-    await prisma.ticketAllocation.delete({
+    await fixturePrisma.ticketAllocation.delete({
       where: {
         id:
           data.allocation.id,
@@ -216,7 +232,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
     });
 
     await expect(
-      prisma.ticket.create({
+      paymentPrisma.ticket.create({
         data: {
           publicId:
             `TKT-${randomUUID()}`,
@@ -236,7 +252,7 @@ describe('SEC-004 DB-bound ticket issuance', () => {
     const data = await fixture();
 
     await expect(
-      prisma.ticket.create({
+      paymentPrisma.ticket.create({
         data: {
           publicId:
             `TKT-${randomUUID()}`,

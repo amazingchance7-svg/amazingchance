@@ -17,7 +17,7 @@ import {
 import type Stripe from 'stripe';
 
 import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
-import { PrismaService } from '../prisma/prisma.service';
+import { PaymentPrismaService } from '../prisma/prisma.service';
 import { PaymentOrchestratorService } from './payment-orchestrator.service';
 import { StripeClient } from './stripe.client';
 import { StripeRefundService } from './stripe-refund.service';
@@ -36,7 +36,7 @@ export type StripeWebhookResult = {
 export class StripeWebhookService {
   constructor(
     private readonly prisma:
-      PrismaService,
+      PaymentPrismaService,
     private readonly stripeClient:
       StripeClient,
     private readonly paymentOrchestrator:

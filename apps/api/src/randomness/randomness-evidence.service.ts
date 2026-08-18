@@ -11,7 +11,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 import { sha256CanonicalJson } from './randomness-canonical-json.util';
 import {
   RANDOMNESS_API_VERSION,
@@ -26,7 +26,7 @@ import { RandomOrgSignedClient } from './random-org-signed.client';
 @Injectable()
 export class RandomnessEvidenceService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: DrawPrismaService,
     private readonly randomOrg:
       RandomOrgSignedClient,
   ) {}

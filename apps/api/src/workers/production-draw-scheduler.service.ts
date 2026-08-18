@@ -10,7 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 import { AutomatedDrawLifecycleService } from './automated-draw-lifecycle.service';
 
 type ClaimedDrawRow = {
@@ -46,7 +46,7 @@ export class ProductionDrawSchedulerService
   private lastAction: string | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: DrawPrismaService,
     private readonly config: ConfigService,
     private readonly drawLifecycle?: AutomatedDrawLifecycleService,
   ) {}

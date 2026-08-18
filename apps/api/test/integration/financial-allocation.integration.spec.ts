@@ -8,15 +8,21 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+} from './database-role.helper';
 
 describe('Financial allocation integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: Awaited<ReturnType<typeof createTestAdminPrisma>>;
   let service:
     FinancialAllocationService;
 
   beforeAll(async () => {
     prisma =
       await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
 
     service =
       new FinancialAllocationService(
@@ -31,7 +37,10 @@ describe('Financial allocation integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+    ]);
   });
 
   async function createRule(
@@ -42,7 +51,7 @@ describe('Financial allocation integration', () => {
     annualJackpotBps = 1000,
     companyRevenueBps = 2000,
   ) {
-    return prisma.allocationRule.create({
+    return fixturePrisma.allocationRule.create({
       data: {
         version,
         weeklyJackpotBps,

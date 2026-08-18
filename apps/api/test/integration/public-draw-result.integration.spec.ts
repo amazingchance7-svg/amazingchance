@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   RandomnessStatus,
   UserStatus,
@@ -9,7 +10,10 @@ import {
 import { randomUUID } from 'node:crypto';
 
 import { PublicDrawResultService } from '../../src/lottery-draws/public-draw-result.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
 import { SnapshotCryptographyService } from '../../src/snapshots/snapshot-cryptography.service';
 import { SnapshotFinalizerService } from '../../src/snapshots/snapshot-finalizer.service';
@@ -17,6 +21,10 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -27,16 +35,20 @@ const OWNER_SECRET =
 
 describe('Public draw result integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
   let builder: SnapshotBuilderService;
   let finalizer: SnapshotFinalizerService;
   let publicResult: PublicDrawResultService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    drawPrisma = await createTestDrawPrisma();
 
     builder =
       new SnapshotBuilderService(
-        prisma,
+        drawPrisma,
         new ConfigService({
           SNAPSHOT_OWNER_SECRET:
             OWNER_SECRET,
@@ -45,7 +57,7 @@ describe('Public draw result integration', () => {
 
     finalizer =
       new SnapshotFinalizerService(
-        prisma,
+        drawPrisma,
         new SnapshotCryptographyService(),
       );
 
@@ -60,14 +72,18 @@ describe('Public draw result integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+    ]);
   });
 
   async function createScenario(
     publish = true,
   ) {
     const user =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email:
             `${randomUUID()}@example.com`,
@@ -78,7 +94,7 @@ describe('Public draw result integration', () => {
       });
 
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-2026-${randomUUID()}`,
@@ -102,7 +118,7 @@ describe('Public draw result integration', () => {
       });
 
     const purchase =
-      await prisma.purchase.create({
+      await fixturePrisma.purchase.create({
         data: {
           publicId:
             `PUR-${randomUUID()}`,
@@ -129,7 +145,7 @@ describe('Public draw result integration', () => {
       index += 1
     ) {
       await ensureTestTicketAllocation(
-        prisma,
+        fixturePrisma,
         {
           purchaseId: purchase.id,
           drawId: draw.id,
@@ -137,7 +153,7 @@ describe('Public draw result integration', () => {
         },
       );
 
-      await prisma.ticket.create({
+      await fixturePrisma.ticket.create({
         data: {
           publicId:
             `TKT-${index}-${randomUUID()}`,
@@ -151,7 +167,7 @@ describe('Public draw result integration', () => {
       });
     }
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },
@@ -183,7 +199,7 @@ describe('Public draw result integration', () => {
       });
 
     const randomness =
-      await prisma.randomnessEvidence.create({
+      await fixturePrisma.randomnessEvidence.create({
         data: {
           drawId: draw.id,
           attemptNumber: 1,
@@ -240,7 +256,7 @@ describe('Public draw result integration', () => {
     ];
 
     // SEC005_FIXTURE_WINNER_PENDING
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },
@@ -271,7 +287,7 @@ describe('Public draw result integration', () => {
         );
       }
 
-      await prisma.drawWinner.create({
+      await fixturePrisma.drawWinner.create({
         data: {
           drawId: draw.id,
           ticketId:
@@ -296,7 +312,7 @@ describe('Public draw result integration', () => {
           1_000,
       );
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },
@@ -522,7 +538,7 @@ describe('Public draw result integration', () => {
       await createScenario();
 
     await expect(
-      prisma.randomnessEvidence.update({
+      fixturePrisma.randomnessEvidence.update({
         where: {
           id:
             scenario.randomness.id,
@@ -541,7 +557,7 @@ describe('Public draw result integration', () => {
       await createScenario();
 
     await expect(
-      prisma.drawWinner.delete({
+      fixturePrisma.drawWinner.delete({
         where: {
           drawId_rank: {
             drawId:

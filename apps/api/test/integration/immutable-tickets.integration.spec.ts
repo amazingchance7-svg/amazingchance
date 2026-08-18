@@ -1,17 +1,25 @@
 import {
   DrawStatus,
   DrawType,
+  PrismaClient,
   PurchaseStatus,
   TicketStatus,
   UserStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -19,9 +27,13 @@ import {
 
 describe('Immutable tickets integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
   });
 
   beforeEach(async () => {
@@ -29,11 +41,15 @@ describe('Immutable tickets integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function createTicket() {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -42,7 +58,7 @@ describe('Immutable tickets integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -54,7 +70,7 @@ describe('Immutable tickets integration', () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `PUR-${randomUUID()}`,
         userId: user.id,
@@ -71,7 +87,7 @@ describe('Immutable tickets integration', () => {
     });
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -79,7 +95,7 @@ describe('Immutable tickets integration', () => {
       },
     );
 
-    const ticket = await prisma.ticket.create({
+    const ticket = await fixturePrisma.ticket.create({
       data: {
         publicId: `TKT-${randomUUID()}`,
         userId: user.id,
@@ -96,7 +112,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.delete({
+      fixturePrisma.ticket.delete({
         where: { id: ticket.id },
       }),
     ).rejects.toThrow('Tickets are immutable and cannot be deleted');
@@ -112,7 +128,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { publicId: `TKT-${randomUUID()}` },
       }),
@@ -125,7 +141,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { userId: randomUUID() },
       }),
@@ -138,7 +154,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { purchaseId: randomUUID() },
       }),
@@ -151,7 +167,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { drawId: randomUUID() },
       }),
@@ -164,7 +180,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { numberInDraw: 999n },
       }),
@@ -177,7 +193,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { issuedAt: new Date(Date.now() + 1_000) },
       }),
@@ -190,7 +206,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
     const voidedAt = new Date();
 
-    const updated = await prisma.ticket.update({
+    const updated = await paymentPrisma.ticket.update({
       where: { id: ticket.id },
       data: {
         status: TicketStatus.VOIDED_BY_REFUND,
@@ -208,7 +224,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: {
           status: TicketStatus.VOIDED_BY_REFUND,
@@ -224,7 +240,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: {
           status: TicketStatus.VOIDED_BY_REFUND,
@@ -241,7 +257,7 @@ describe('Immutable tickets integration', () => {
     const { ticket } = await createTicket();
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: { voidReason: 'INVALID_DIRECT_CHANGE' },
       }),
@@ -253,7 +269,7 @@ describe('Immutable tickets integration', () => {
   it('prevents any modification after a ticket is voided', async () => {
     const { ticket } = await createTicket();
 
-    await prisma.ticket.update({
+    await paymentPrisma.ticket.update({
       where: { id: ticket.id },
       data: {
         status: TicketStatus.VOIDED_BY_REFUND,
@@ -263,7 +279,7 @@ describe('Immutable tickets integration', () => {
     });
 
     await expect(
-      prisma.ticket.update({
+      paymentPrisma.ticket.update({
         where: { id: ticket.id },
         data: {
           status: TicketStatus.ACTIVE,
@@ -278,7 +294,7 @@ describe('Immutable tickets integration', () => {
     const { user, draw, purchase } = await createTicket();
 
     await ensureTestTicketAllocation(
-      prisma,
+      fixturePrisma,
       {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -287,7 +303,7 @@ describe('Immutable tickets integration', () => {
     );
 
     await expect(
-      prisma.ticket.create({
+      paymentPrisma.ticket.create({
         data: {
           publicId: `TKT-${randomUUID()}`,
           userId: user.id,

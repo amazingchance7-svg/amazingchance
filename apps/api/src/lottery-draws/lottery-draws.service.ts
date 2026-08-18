@@ -14,7 +14,7 @@ import {
 
 import { PaginatedResult } from '../common/types/paginated-result.type';
 import { scheduledSalesCutoffAt } from './sales-window.policy';
-import { PrismaService } from '../prisma/prisma.service';
+import { DrawPrismaService } from '../prisma/prisma.service';
 import { CreateLotteryDrawDto } from './dto/create-lottery-draw.dto';
 import { ListLotteryDrawsDto } from './dto/list-lottery-draws.dto';
 import { UpdateLotteryDrawDto } from './dto/update-lottery-draw.dto';
@@ -25,7 +25,7 @@ type SerializedLotteryDraw = Omit<LotteryDraw, 'ticketPriceMinor'> & {
 
 @Injectable()
 export class LotteryDrawsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: DrawPrismaService) {}
 
   async create(dto: CreateLotteryDrawDto): Promise<SerializedLotteryDraw> {
     this.validateDates(

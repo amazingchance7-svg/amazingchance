@@ -2,23 +2,35 @@ import {
   LedgerAccountCode,
   LedgerSide,
   LedgerTransactionType,
+  PrismaClient,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { LedgerService } from '../../src/ledger/ledger.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 
 describe('Immutable balanced ledger integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let paymentPrisma: PaymentPrismaService;
   let service: LedgerService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
-    service = new LedgerService(prisma);
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
+    service = new LedgerService(paymentPrisma);
   });
 
   beforeEach(async () => {
@@ -26,7 +38,11 @@ describe('Immutable balanced ledger integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   it('appends, balances and seals one immutable transaction', async () => {
@@ -111,7 +127,7 @@ describe('Immutable balanced ledger integration', () => {
     });
 
     await expect(
-      prisma.ledgerTransaction.update({
+      paymentPrisma.ledgerTransaction.update({
         where: { id: result.transaction.id },
         data: { description: 'tampered' },
       }),
@@ -141,7 +157,7 @@ describe('Immutable balanced ledger integration', () => {
     });
 
     await expect(
-      prisma.ledgerPosting.delete({
+      fixturePrisma.ledgerPosting.delete({
         where: {
           id: result.transaction.postings[0].id,
         },
@@ -172,7 +188,7 @@ describe('Immutable balanced ledger integration', () => {
     });
 
     await expect(
-      prisma.ledgerPosting.create({
+      paymentPrisma.ledgerPosting.create({
         data: {
           transactionId: result.transaction.id,
           accountCode: LedgerAccountCode.CASH,
@@ -185,7 +201,7 @@ describe('Immutable balanced ledger integration', () => {
 
   it('rejects an unsealed or unbalanced transaction at commit', async () => {
     await expect(
-      prisma.$transaction(async (tx) => {
+      paymentPrisma.$transaction(async (tx) => {
         const ledger = await tx.ledgerTransaction.create({
           data: {
             type:

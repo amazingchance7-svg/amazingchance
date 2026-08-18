@@ -3,6 +3,7 @@ import {
   DrawStatus,
   DrawType,
   Prisma,
+  PrismaClient,
   PurchaseStatus,
   RandomnessStatus,
   UserStatus,
@@ -17,7 +18,11 @@ import {
 import { LedgerService } from '../../src/ledger/ledger.service';
 import { PrizeDistributionService } from '../../src/prizes/prize-distribution.service';
 import { PrizePoolService } from '../../src/prizes/prize-pool.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
+import {
+  DrawPrismaService,
+  PaymentPrismaService,
+  PrismaService,
+} from '../../src/prisma/prisma.service';
 import { SnapshotBuilderService } from '../../src/snapshots/snapshot-builder.service';
 import { SnapshotCryptographyService } from '../../src/snapshots/snapshot-cryptography.service';
 import { SnapshotFinalizerService } from '../../src/snapshots/snapshot-finalizer.service';
@@ -26,6 +31,11 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+  createTestDrawPrisma,
+  createTestPaymentPrisma,
+} from './database-role.helper';
 import {
   ensureTestTicketAllocation,
 } from './ticket-fixture.helper';
@@ -36,19 +46,29 @@ const OWNER_SECRET =
 
 describe('Winner selection integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
+  let drawPrisma: DrawPrismaService;
+  let paymentPrisma: PaymentPrismaService;
   let builder: SnapshotBuilderService;
   let finalizer: SnapshotFinalizerService;
   let winnerSelection: WinnerSelectionService;
   let ledger: LedgerService;
+  let fixtureLedger: LedgerService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma =
+      await createTestAdminPrisma();
+    drawPrisma =
+      await createTestDrawPrisma();
+    paymentPrisma =
+      await createTestPaymentPrisma();
 
     const cryptography =
       new SnapshotCryptographyService();
 
     builder = new SnapshotBuilderService(
-      prisma,
+      drawPrisma,
       new ConfigService({
         SNAPSHOT_OWNER_SECRET:
           OWNER_SECRET,
@@ -57,22 +77,25 @@ describe('Winner selection integration', () => {
 
     finalizer =
       new SnapshotFinalizerService(
-        prisma,
+        drawPrisma,
         cryptography,
       );
 
     ledger =
-      new LedgerService(prisma);
+      new LedgerService(drawPrisma);
+
+    fixtureLedger =
+      new LedgerService(paymentPrisma);
 
     winnerSelection =
       new WinnerSelectionService(
-        prisma,
+        drawPrisma,
         ledger,
         new PrizeDistributionService(
-          prisma,
+          drawPrisma,
         ),
         new PrizePoolService(
-          prisma,
+          drawPrisma,
         ),
       );
   });
@@ -82,7 +105,12 @@ describe('Winner selection integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      drawPrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   async function createScenario(
@@ -99,7 +127,7 @@ describe('Winner selection integration', () => {
     },
   ) {
     const user =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email:
             `${randomUUID()}@example.com`,
@@ -110,7 +138,7 @@ describe('Winner selection integration', () => {
       });
 
     const draw =
-      await prisma.lotteryDraw.create({
+      await fixturePrisma.lotteryDraw.create({
         data: {
           publicId:
             `W-2026-${randomUUID()}`,
@@ -131,7 +159,7 @@ describe('Winner selection integration', () => {
       });
 
     const purchase =
-      await prisma.purchase.create({
+      await fixturePrisma.purchase.create({
         data: {
           publicId:
             `PUR-${randomUUID()}`,
@@ -151,7 +179,7 @@ describe('Winner selection integration', () => {
         },
       });
 
-    await ledger.append({
+    await fixtureLedger.append({
       type:
         LedgerTransactionType
           .PAYMENT_ALLOCATION,
@@ -215,7 +243,7 @@ describe('Winner selection integration', () => {
     ) {
       const ticket =
         await ensureTestTicketAllocation(
-          prisma,
+          fixturePrisma,
           {
             purchaseId: purchase.id,
             drawId: draw.id,
@@ -223,7 +251,7 @@ describe('Winner selection integration', () => {
           },
         );
 
-        await prisma.ticket.create({
+        await fixturePrisma.ticket.create({
           data: {
             publicId:
               `TKT-${index}-${randomUUID()}`,
@@ -238,7 +266,7 @@ describe('Winner selection integration', () => {
       tickets.push(ticket);
     }
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },
@@ -255,7 +283,7 @@ describe('Winner selection integration', () => {
       await finalizer.finalize(draw.id);
 
     const randomness =
-      await prisma.randomnessEvidence.create({
+      await fixturePrisma.randomnessEvidence.create({
         data: {
           drawId: draw.id,
           attemptNumber: 1,
@@ -305,7 +333,7 @@ describe('Winner selection integration', () => {
         },
       });
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: draw.id,
       },
@@ -566,7 +594,7 @@ describe('Winner selection integration', () => {
     const scenario =
       await createScenario();
 
-    await prisma.lotteryDraw.update({
+    await fixturePrisma.lotteryDraw.update({
       where: {
         id: scenario.draw.id,
       },
@@ -882,7 +910,7 @@ describe('Winner selection integration', () => {
         });
 
     await expect(
-      prisma.prize.update({
+      fixturePrisma.prize.update({
         where: {
           id: prize.id,
         },
@@ -894,7 +922,7 @@ describe('Winner selection integration', () => {
     ).rejects.toThrow();
 
     await expect(
-      prisma.prize.update({
+      fixturePrisma.prize.update({
         where: {
           id: prize.id,
         },
@@ -907,7 +935,7 @@ describe('Winner selection integration', () => {
     ).rejects.toThrow();
 
     const anotherUser =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email:
             `${randomUUID()}@example.com`,
@@ -920,7 +948,7 @@ describe('Winner selection integration', () => {
       });
 
     await expect(
-      prisma.prize.update({
+      fixturePrisma.prize.update({
         where: {
           id: prize.id,
         },
@@ -932,7 +960,7 @@ describe('Winner selection integration', () => {
     ).rejects.toThrow();
 
     await expect(
-      prisma.prize.delete({
+      fixturePrisma.prize.delete({
         where: {
           id: prize.id,
         },

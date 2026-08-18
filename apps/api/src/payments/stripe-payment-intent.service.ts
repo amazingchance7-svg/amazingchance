@@ -16,7 +16,7 @@ import type Stripe from 'stripe';
 import { PlayerProtectionService } from '../compliance/player-protection.service';
 import { createCorrelationId } from '../common/utils/identifier.util';
 import { ticketSalesBlockReason } from '../lottery-draws/sales-window.policy';
-import { PrismaService } from '../prisma/prisma.service';
+import { PaymentPrismaService } from '../prisma/prisma.service';
 import { StripeClient } from './stripe.client';
 
 const STRIPE_PROVIDER = 'STRIPE';
@@ -53,7 +53,7 @@ export type StripePaymentIntentResult = {
 export class StripePaymentIntentService {
   constructor(
     private readonly prisma:
-      PrismaService,
+      PaymentPrismaService,
     private readonly stripeClient:
       StripeClient,
     private readonly playerProtection:

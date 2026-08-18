@@ -6,19 +6,27 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
-import { PrismaService } from "../../src/prisma/prisma.service";
+import { PaymentPrismaService, PrismaService } from "../../src/prisma/prisma.service";
 import { TicketAllocationService } from "../../src/tickets/ticket-allocation.service";
 import {
   cleanTestDatabase,
   createTestPrisma,
 } from "./database.helper";
+import {
+  createTestAdminPrisma,
+  createTestPaymentPrisma,
+} from "./database-role.helper";
 
 describe("TicketAllocationService concurrency integration", () => {
   let prisma: PrismaService;
+  let fixturePrisma: Awaited<ReturnType<typeof createTestAdminPrisma>>;
+  let paymentPrisma: PaymentPrismaService;
   let service: TicketAllocationService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
+    paymentPrisma = await createTestPaymentPrisma();
     service = new TicketAllocationService();
   });
 
@@ -27,11 +35,15 @@ describe("TicketAllocationService concurrency integration", () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+      paymentPrisma.$disconnect(),
+    ]);
   });
 
   it("allocates non-overlapping contiguous ranges under concurrency", async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: "tickets@example.com",
         passwordHash: "test-password-hash",
@@ -40,7 +52,7 @@ describe("TicketAllocationService concurrency integration", () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `draw_${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -55,7 +67,7 @@ describe("TicketAllocationService concurrency integration", () => {
 
     const purchases = await Promise.all(
       counts.map((ticketCount, index) =>
-        prisma.purchase.create({
+        fixturePrisma.purchase.create({
           data: {
             publicId: `purchase_${index}_${randomUUID()}`,
             userId: user.id,
@@ -74,7 +86,7 @@ describe("TicketAllocationService concurrency integration", () => {
 
     const allocations = await Promise.all(
       purchases.map((purchase, index) =>
-        prisma.$transaction((tx) =>
+        paymentPrisma.$transaction((tx) =>
           service.reserveRange(tx, {
             purchaseId: purchase.id,
             drawId: draw.id,
@@ -107,7 +119,7 @@ describe("TicketAllocationService concurrency integration", () => {
   });
 
   it("returns the existing allocation when the same purchase is retried", async () => {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: "retry@example.com",
         passwordHash: "test-password-hash",
@@ -116,7 +128,7 @@ describe("TicketAllocationService concurrency integration", () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `draw_${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -127,7 +139,7 @@ describe("TicketAllocationService concurrency integration", () => {
       },
     });
 
-    const purchase = await prisma.purchase.create({
+    const purchase = await fixturePrisma.purchase.create({
       data: {
         publicId: `purchase_${randomUUID()}`,
         userId: user.id,
@@ -142,7 +154,7 @@ describe("TicketAllocationService concurrency integration", () => {
       },
     });
 
-    const first = await prisma.$transaction((tx) =>
+    const first = await paymentPrisma.$transaction((tx) =>
       service.reserveRange(tx, {
         purchaseId: purchase.id,
         drawId: draw.id,
@@ -151,7 +163,7 @@ describe("TicketAllocationService concurrency integration", () => {
       }),
     );
 
-    const second = await prisma.$transaction((tx) =>
+    const second = await paymentPrisma.$transaction((tx) =>
       service.reserveRange(tx, {
         purchaseId: purchase.id,
         drawId: draw.id,

@@ -18,7 +18,7 @@ import {
   LedgerService,
 } from '../ledger/ledger.service';
 import {
-  PrismaService,
+  PayoutPrismaService,
 } from '../prisma/prisma.service';
 
 const REQUIRED_CHECKS =
@@ -87,7 +87,7 @@ export type PayoutCompletionResult = {
 export class PayoutOrchestratorService {
   constructor(
     private readonly prisma:
-      PrismaService,
+      PayoutPrismaService,
     private readonly ledger:
       LedgerService,
   ) {}

@@ -1,4 +1,5 @@
 import {
+  PrismaClient,
   DrawStatus,
   DrawType,
   PurchaseStatus,
@@ -13,13 +14,18 @@ import {
   cleanTestDatabase,
   createTestPrisma,
 } from './database.helper';
+import {
+  createTestAdminPrisma,
+} from './database-role.helper';
 
 describe('Purchase idempotency integration', () => {
   let prisma: PrismaService;
+  let fixturePrisma: PrismaClient;
   let service: PurchasesService;
 
   beforeAll(async () => {
     prisma = await createTestPrisma();
+    fixturePrisma = await createTestAdminPrisma();
     const playerProtection = {
       assertCanPurchaseInTransaction:
         jest.fn().mockResolvedValue({
@@ -41,11 +47,14 @@ describe('Purchase idempotency integration', () => {
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await Promise.all([
+      prisma.$disconnect(),
+      fixturePrisma.$disconnect(),
+    ]);
   });
 
   async function createScenario() {
-    const user = await prisma.user.create({
+    const user = await fixturePrisma.user.create({
       data: {
         email: `${randomUUID()}@example.com`,
         passwordHash: 'hash',
@@ -54,7 +63,7 @@ describe('Purchase idempotency integration', () => {
       },
     });
 
-    const draw = await prisma.lotteryDraw.create({
+    const draw = await fixturePrisma.lotteryDraw.create({
       data: {
         publicId: `W-2026-${randomUUID()}`,
         type: DrawType.WEEKLY,
@@ -198,7 +207,7 @@ describe('Purchase idempotency integration', () => {
       await createScenario();
 
     const secondUser =
-      await prisma.user.create({
+      await fixturePrisma.user.create({
         data: {
           email: `${randomUUID()}@example.com`,
           passwordHash: 'hash',
